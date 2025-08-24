@@ -1,0 +1,620 @@
+<div class="app-container">
+  <!-- Login Section -->
+  <div *ngIf="!isLoggedIn()" class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>📝 Advanced ToDo Manager</h1>
+        <p>Manage your tasks with style and efficiency</p>
+      </div>
+      
+      <form (ngSubmit)="login()" class="login-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input
+            type="text"
+            id="username"
+            [(ngModel)]="loginData.username"
+            name="username"
+            placeholder="Enter username"
+            required
+          />
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            [(ngModel)]="loginData.password"
+            name="password"
+            placeholder="Enter password"
+            required
+          />
+        </div>
+        
+        <button type="submit" [disabled]="isLoading" class="login-btn">
+          <span *ngIf="isLoading">Logging in...</span>
+          <span *ngIf="!isLoading">Login</span>
+        </button>
+      </form>
+      
+      <div *ngIf="errorMessage" class="error-message">
+        {{ errorMessage }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Application -->
+  <div *ngIf="isLoggedIn()" class="main-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="header-left">
+          <h1>📝 Advanced ToDo Manager</h1>
+          <span class="user-info">Welcome, {{ getCurrentUsername() }}!</span>
+        </div>
+        
+        <div class="header-nav">
+          <button 
+            class="nav-btn" 
+            [class.active]="currentView === 'DASHBOARD'"
+            (click)="switchView('DASHBOARD')">
+            📊 Dashboard
+          </button>
+          <button 
+            class="nav-btn" 
+            [class.active]="currentView === 'TASKS'"
+            (click)="switchView('TASKS')">
+            📝 Tasks
+          </button>
+          <button 
+            class="nav-btn" 
+            [class.active]="currentView === 'CATEGORIES'"
+            (click)="switchView('CATEGORIES')">
+            🏷️ Categories
+          </button>
+          <button class="export-btn" (click)="exportTasks()">
+            📤 Export
+          </button>
+          <button class="logout-btn" (click)="logout()">
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Success/Error Messages -->
+    <div *ngIf="successMessage" class="success-message">
+      {{ successMessage }}
+    </div>
+    <div *ngIf="errorMessage" class="error-message">
+      {{ errorMessage }}
+    </div>
+    <!-- Dashboard View -->
+    <div *ngIf="currentView === 'DASHBOARD'" class="dashboard-view">
+      <div class="dashboard-grid">
+        <!-- Stats Cards -->
+        <div class="stats-section">
+          <h2>📊 Task Statistics</h2>
+          <div class="stats-grid" *ngIf="taskStats">
+            <div class="stat-card">
+              <div class="stat-number">{{ taskStats.total }}</div>
+              <div class="stat-label">Total Tasks</div>
+            </div>
+            <div class="stat-card pending">
+              <div class="stat-number">{{ taskStats.pending }}</div>
+              <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card in-progress">
+              <div class="stat-number">{{ taskStats.inProgress }}</div>
+              <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card completed">
+              <div class="stat-number">{{ taskStats.completed }}</div>
+              <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card overdue">
+              <div class="stat-number">{{ taskStats.overdue }}</div>
+              <div class="stat-label">Overdue</div>
+            </div>
+            <div class="stat-card due-today">
+              <div class="stat-number">{{ taskStats.dueToday }}</div>
+              <div class="stat-label">Due Today</div>
+            </div>
+            <div class="stat-card completion-rate">
+              <div class="stat-number">{{ taskStats.completionRate }}%</div>
+              <div class="stat-label">Completion Rate</div>
+            </div>
+            <div class="stat-card avg-time">
+              <div class="stat-number">{{ taskStats.avgCompletionTime }}</div>
+              <div class="stat-label">Avg Days to Complete</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="recent-activity">
+          <h3>🔥 Recent Tasks</h3>
+          <div class="activity-list">
+            <div *ngFor="let task of tasks.slice(0, 5)" class="activity-item">
+              <span class="activity-icon">{{ getCategoryIcon(task.category || '') }}</span>
+              <div class="activity-content">
+                <div class="activity-title">{{ task.title }}</div>
+                <div class="activity-meta">
+                  <span class="status-badge" [ngClass]="task.status.toLowerCase().replace('_', '-')">
+                    {{ task.status.replace('_', ' ') }}
+                  </span>
+                  <span *ngIf="task.priority" class="priority-badge" 
+                        [style.color]="getPriorityColor(task.priority)">
+                    {{ getPriorityIcon(task.priority) }} {{ task.priority }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Overdue Tasks Alert -->
+        <div *ngIf="overdueTasks.length > 0" class="alert-section">
+          <h3>⚠️ Overdue Tasks ({{ overdueTasks.length }})</h3>
+          <div class="alert-list">
+            <div *ngFor="let task of overdueTasks.slice(0, 3)" class="alert-item">
+              <span class="alert-icon">🔴</span>
+              <div class="alert-content">
+                <div class="alert-title">{{ task.title }}</div>
+                <div class="alert-date">Due: {{ formatDueDate(task.dueDate!) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tasks Due Today -->
+        <div *ngIf="tasksDueToday.length > 0" class="today-section">
+          <h3>📅 Due Today ({{ tasksDueToday.length }})</h3>
+          <div class="today-list">
+            <div *ngFor="let task of tasksDueToday" class="today-item">
+              <span class="today-icon">🟡</span>
+              <div class="today-content">
+                <div class="today-title">{{ task.title }}</div>
+                <div class="today-priority">Priority: {{ task.priority || 'Medium' }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Categories View -->
+    <div *ngIf="currentView === 'CATEGORIES'" class="categories-view">
+      <div class="categories-header">
+        <h2>🏷️ Task Categories</h2>
+        <p>Organize your tasks by categories</p>
+      </div>
+      
+      <div class="categories-grid">
+        <div *ngFor="let category of categories" class="category-card" 
+             [style.border-left-color]="category.color">
+          <div class="category-header">
+            <span class="category-icon">{{ category.icon }}</span>
+            <span class="category-name">{{ category.name }}</span>
+          </div>
+          <div class="category-stats">
+            <div class="category-count">
+              {{ tasks.filter(t => t.category === category.name).length }} tasks
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tasks View -->
+    <div *ngIf="currentView === 'TASKS'" class="tasks-view">
+      <!-- Search and Filters -->
+      <div class="search-filter-section">
+        <div class="search-bar">
+          <input
+            type="text"
+            [(ngModel)]="searchKeyword"
+            (keyup.enter)="searchTasks()"
+            placeholder="Search tasks by title, description, or category..."
+            class="search-input"
+          />
+          <button class="search-btn" (click)="searchTasks()">🔍</button>
+          <button class="clear-btn" (click)="clearSearch()">✖️</button>
+        </div>
+
+        <div class="filter-buttons">
+          <button 
+            class="filter-btn" 
+            [class.active]="currentFilter === 'ALL'"
+            (click)="filterByStatus('ALL')">
+            All ({{ tasks.length }})
+          </button>
+          <button 
+            class="filter-btn pending" 
+            [class.active]="currentFilter === 'PENDING'"
+            (click)="filterByStatus('PENDING')">
+            Pending ({{ tasks.filter(t => t.status === 'PENDING').length }})
+          </button>
+          <button 
+            class="filter-btn in-progress" 
+            [class.active]="currentFilter === 'IN_PROGRESS'"
+            (click)="filterByStatus('IN_PROGRESS')">
+            In Progress ({{ tasks.filter(t => t.status === 'IN_PROGRESS').length }})
+          </button>
+          <button 
+            class="filter-btn completed" 
+            [class.active]="currentFilter === 'COMPLETED'"
+            (click)="filterByStatus('COMPLETED')">
+            Completed ({{ tasks.filter(t => t.status === 'COMPLETED').length }})
+          </button>
+          <button 
+            class="filter-btn overdue" 
+            [class.active]="currentFilter === 'OVERDUE'"
+            (click)="filterByStatus('OVERDUE')">
+            Overdue ({{ overdueTasks.length }})
+          </button>
+          <button 
+            class="filter-btn due-today" 
+            [class.active]="currentFilter === 'DUE_TODAY'"
+            (click)="filterByStatus('DUE_TODAY')">
+            Due Today ({{ tasksDueToday.length }})
+          </button>
+        </div>
+
+        <div class="advanced-filters">
+          <button class="toggle-filters-btn" (click)="toggleAdvancedFilters()">
+            {{ showAdvancedFilters ? '🔼' : '🔽' }} Advanced Filters
+          </button>
+          
+          <div *ngIf="showAdvancedFilters" class="filters-panel">
+            <div class="filter-row">
+              <div class="filter-group">
+                <label>Priority:</label>
+                <select [(ngModel)]="filterByPriority" (change)="applyAdvancedFilters()">
+                  <option value="ALL">All Priorities</option>
+                  <option value="HIGH">🔴 High</option>
+                  <option value="MEDIUM">🟡 Medium</option>
+                  <option value="LOW">🟢 Low</option>
+                </select>
+              </div>
+              
+              <div class="filter-group">
+                <label>Category:</label>
+                <select [(ngModel)]="filterByCategory" (change)="applyAdvancedFilters()">
+                  <option value="">All Categories</option>
+                  <option *ngFor="let category of categories" [value]="category.name">
+                    {{ category.icon }} {{ category.name }}
+                  </option>
+                </select>
+              </div>
+              
+              <div class="filter-group">
+                <label>Sort by:</label>
+                <select [(ngModel)]="sortBy" (change)="applyAdvancedFilters()">
+                  <option value="createdAt">Created Date</option>
+                  <option value="title">Title</option>
+                  <option value="dueDate">Due Date</option>
+                  <option value="priority">Priority</option>
+                </select>
+              </div>
+              
+              <div class="filter-group">
+                <label>Order:</label>
+                <select [(ngModel)]="sortOrder" (change)="applyAdvancedFilters()">
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Task Form -->
+      <div class="add-task-section">
+        <h2>➕ Add New Task</h2>
+        <form (ngSubmit)="addTask()" class="task-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Title *</label>
+              <input
+                type="text"
+                [(ngModel)]="newTask.title"
+                name="title"
+                placeholder="Enter task title"
+                required
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Status</label>
+              <select [(ngModel)]="newTask.status" name="status">
+                <option value="PENDING">📋 Pending</option>
+                <option value="IN_PROGRESS">⚡ In Progress</option>
+                <option value="COMPLETED">✅ Completed</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Priority</label>
+              <select [(ngModel)]="newTask.priority" name="priority">
+                <option value="LOW">🟢 Low</option>
+                <option value="MEDIUM">🟡 Medium</option>
+                <option value="HIGH">🔴 High</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Category</label>
+              <select [(ngModel)]="newTask.category" name="category">
+                <option value="">Select category</option>
+                <option *ngFor="let category of categories" [value]="category.name">
+                  {{ category.icon }} {{ category.name }}
+                </option>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label>Due Date</label>
+              <input
+                type="date"
+                [(ngModel)]="newTask.dueDate"
+                name="dueDate"
+              />
+            </div>
+            
+            <div class="form-group">
+              <button type="submit" class="add-btn" [disabled]="!newTask.title">
+                ➕ Add Task
+              </button>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group full-width">
+              <label>Description</label>
+              <textarea
+                [(ngModel)]="newTask.description"
+                name="description"
+                placeholder="Enter task description (optional)"
+                rows="3"
+              ></textarea>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tasks List -->
+      <div class="tasks-section">
+        <h2>📋 Tasks ({{ filteredTasks.length }})</h2>
+        
+        <div *ngIf="isLoading" class="loading-message">
+          Loading tasks...
+        </div>
+        
+        <div *ngIf="!isLoading && filteredTasks.length === 0" class="no-tasks">
+          <div class="no-tasks-icon">📝</div>
+          <h3>No tasks found</h3>
+          <p>{{ searchKeyword || currentFilter !== 'ALL' ? 'Try adjusting your filters' : 'Add your first task above' }}</p>
+        </div>
+        
+        <div class="tasks-list" *ngIf="!isLoading && filteredTasks.length > 0">
+          <div *ngFor="let task of filteredTasks; trackBy: trackByTaskId" class="task-card">
+            <div class="task-header">
+              <div class="task-title-section">
+                <h3 class="task-title" [class.completed]="task.status === 'COMPLETED'">
+                  {{ task.title }}
+                </h3>
+                <div class="task-badges">
+                  <span class="status-badge" [ngClass]="task.status.toLowerCase().replace('_', '-')">
+                    {{ task.status.replace('_', ' ') }}
+                  </span>
+                  <span *ngIf="task.priority" class="priority-badge" 
+                        [style.background-color]="getPriorityColor(task.priority)">
+                    {{ getPriorityIcon(task.priority) }} {{ task.priority }}
+                  </span>
+                  <span *ngIf="task.category" class="category-badge"
+                        [style.border-color]="getCategoryColor(task.category)">
+                    {{ getCategoryIcon(task.category) }} {{ task.category }}
+                  </span>
+                </div>
+              </div>
+              
+              <div class="task-actions">
+                <button class="action-btn edit-btn" (click)="startEditing(task)">
+                  ✏️
+                </button>
+                <button class="action-btn delete-btn" (click)="deleteTask(task.id!)">
+                  🗑️
+                </button>
+              </div>
+            </div>
+            
+            <div *ngIf="task.description" class="task-description">
+              {{ task.description }}
+            </div>
+            
+            <div class="task-meta">
+              <div class="task-dates">
+                <span *ngIf="task.createdAt" class="meta-item">
+                  📅 Created: {{ formatDate(task.createdAt) }}
+                </span>
+                <span *ngIf="task.dueDate" class="meta-item due-date"
+                      [class.overdue]="isOverdue(task)"
+                      [class.due-today]="isDueToday(task)">
+                  ⏰ {{ formatDueDate(task.dueDate) }}
+                </span>
+              </div>
+              
+              <div class="task-quick-actions">
+                <button *ngIf="task.status === 'PENDING'" 
+                        class="quick-action-btn start-btn"
+                        (click)="updateTaskStatus(task, 'IN_PROGRESS')">
+                  ▶️ Start
+                </button>
+                <button *ngIf="task.status === 'IN_PROGRESS'" 
+                        class="quick-action-btn complete-btn"
+                        (click)="updateTaskStatus(task, 'COMPLETED')">
+                  ✅ Complete
+                </button>
+                <button *ngIf="task.status === 'COMPLETED'" 
+                        class="quick-action-btn reopen-btn"
+                        (click)="updateTaskStatus(task, 'PENDING')">
+                  🔄 Reopen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Task Modal -->
+  <div *ngIf="editingTask" class="modal-overlay" (click)="cancelEdit()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>✏️ Edit Task</h3>
+        <button class="close-btn" (click)="cancelEdit()">✖️</button>
+      </div>
+      
+      <form (ngSubmit)="saveTask()" class="edit-form">
+        <div class="form-group">
+          <label>Title *</label>
+          <input
+            type="text"
+            [(ngModel)]="editingTask.title"
+            name="title"
+            required
+          />
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select [(ngModel)]="editingTask.status" name="status">
+              <option value="PENDING">📋 Pending</option>
+              <option value="IN_PROGRESS">⚡ In Progress</option>
+              <option value="COMPLETED">✅ Completed</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>Priority</label>
+            <select [(ngModel)]="editingTask.priority" name="priority">
+              <option value="LOW">🟢 Low</option>
+              <option value="MEDIUM">🟡 Medium</option>
+              <option value="HIGH">🔴 High</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select [(ngModel)]="editingTask.category" name="category">
+              <option value="">Select category</option>
+              <option *ngFor="let category of categories" [value]="category.name">
+                {{ category.icon }} {{ category.name }}
+              </option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label>Due Date</label>
+            <input
+              type="date"
+              [(ngModel)]="editingTask.dueDate"
+              name="dueDate"
+            />
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Description</label>
+          <textarea
+            [(ngModel)]="editingTask.description"
+            name="description"
+            rows="3"
+          ></textarea>
+        </div>
+        
+        <div class="modal-actions">
+          <button type="button" class="cancel-btn" (click)="cancelEdit()">
+            Cancel
+          </button>
+          <button type="submit" class="save-btn" [disabled]="!editingTask.title">
+            💾 Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Github"
+          >
+            <path
+              d="M12.3047 0C5.50634 0 0 5.50942 0 12.3047C0 17.7423 3.52529 22.3535 8.41332 23.9787C9.02856 24.0946 9.25414 23.7142 9.25414 23.3871C9.25414 23.0949 9.24389 22.3207 9.23876 21.2953C5.81601 22.0377 5.09414 19.6444 5.09414 19.6444C4.53427 18.2243 3.72524 17.8449 3.72524 17.8449C2.61064 17.082 3.81137 17.0973 3.81137 17.0973C5.04697 17.1835 5.69604 18.3647 5.69604 18.3647C6.79321 20.2463 8.57636 19.7029 9.27978 19.3881C9.39052 18.5924 9.70736 18.0499 10.0591 17.7423C7.32641 17.4347 4.45429 16.3765 4.45429 11.6618C4.45429 10.3185 4.9311 9.22133 5.72065 8.36C5.58222 8.04931 5.16694 6.79833 5.82831 5.10337C5.82831 5.10337 6.85883 4.77319 9.2121 6.36459C10.1965 6.09082 11.2424 5.95546 12.2883 5.94931C13.3342 5.95546 14.3801 6.09082 15.3644 6.36459C17.7023 4.77319 18.7328 5.10337 18.7328 5.10337C19.3942 6.79833 18.9789 8.04931 18.8559 8.36C19.6403 9.22133 20.1171 10.3185 20.1171 11.6618C20.1171 16.3888 17.2409 17.4296 14.5031 17.7321C14.9338 18.1012 15.3337 18.8559 15.3337 20.0084C15.3337 21.6552 15.3183 22.978 15.3183 23.3779C15.3183 23.7009 15.5336 24.0854 16.1642 23.9623C21.0871 22.3484 24.6094 17.7341 24.6094 12.3047C24.6094 5.50942 19.0999 0 12.3047 0Z"
+            />
+          </svg>
+        </a>
+        <a
+          href="https://twitter.com/angular"
+          aria-label="Twitter"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Twitter"
+          >
+            <path
+              d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+            />
+          </svg>
+        </a>
+        <a
+          href="https://www.youtube.com/channel/UCbn1OgGei-DV7aSRo_HaAiw"
+          aria-label="Youtube"
+          target="_blank"
+          rel="noopener"
+        >
+          <svg
+            width="29"
+            height="20"
+            viewBox="0 0 29 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            alt="Youtube"
+          >
+            <path
+              fill-rule="evenodd"
+              clip-rule="evenodd"
+              d="M27.4896 1.52422C27.9301 1.96749 28.2463 2.51866 28.4068 3.12258C29.0004 5.35161 29.0004 10 29.0004 10C29.0004 10 29.0004 14.6484 28.4068 16.8774C28.2463 17.4813 27.9301 18.0325 27.4896 18.4758C27.0492 18.9191 26.5 19.2389 25.8972 19.4032C23.6778 20 14.8068 20 14.8068 20C14.8068 20 5.93586 20 3.71651 19.4032C3.11363 19.2389 2.56449 18.9191 2.12405 18.4758C1.68361 18.0325 1.36732 17.4813 1.20683 16.8774C0.613281 14.6484 0.613281 10 0.613281 10C0.613281 10 0.613281 5.35161 1.20683 3.12258C1.36732 2.51866 1.68361 1.96749 2.12405 1.52422C2.56449 1.08095 3.11363 0.76113 3.71651 0.596774C5.93586 0 14.8068 0 14.8068 0C14.8068 0 23.6778 0 25.8972 0.596774C26.5 0.76113 27.0492 1.08095 27.4896 1.52422ZM19.3229 10L11.9036 5.77905V14.221L19.3229 10Z"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * -->
+<!-- * * * * * * * * * * * The content above * * * * * * * * * * * * -->
+<!-- * * * * * * * * * * is only a placeholder * * * * * * * * * * * -->
+<!-- * * * * * * * * * * and can be replaced.  * * * * * * * * * * * -->
+<!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * -->
+<!-- * * * * * * * * * * End of Placeholder  * * * * * * * * * * * * -->
+<!-- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * -->
+
+
+<router-outlet />
