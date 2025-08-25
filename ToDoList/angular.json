@@ -54,6 +54,24 @@
               ],
               "outputHashing": "all"
             },
+            "github-pages": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "2MB",
+                  "maximumError": "3MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "20kB",
+                  "maximumError": "30kB"
+                }
+              ],
+              "outputHashing": "all",
+              "baseHref": "/ToDoApplication-Frontend/",
+              "optimization": true,
+              "outputMode": "static"
+            },
             "development": {
               "optimization": false,
               "extractLicenses": false,
