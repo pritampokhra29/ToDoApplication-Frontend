@@ -9,6 +9,10 @@
         <span class="role-badge" [class]="'role-' + currentUser?.role?.toLowerCase()">
           {{ currentUser?.role }}
         </span>
+        <!-- Debug info -->
+        <small style="margin-left: 10px; color: #666;">
+          (Admin: {{ isAdmin ? 'Yes' : 'No' }})
+        </small>
         <button class="btn btn-outline" (click)="logout()">Logout</button>
       </div>
     </div>
@@ -328,6 +332,13 @@
               </td>
               <td>{{ formatDate(user.createdAt!) }}</td>
               <td class="actions">
+                <button class="btn-icon" 
+                        (click)="toggleUserStatus(user)" 
+                        [title]="user.isActive ? 'Deactivate User' : 'Activate User'"
+                        [class.btn-deactivate]="user.isActive"
+                        [class.btn-activate]="!user.isActive">
+                  {{ user.isActive ? '🔒' : '🔓' }}
+                </button>
                 <button class="btn-icon" (click)="openUserModal(user)" title="Edit">✏️</button>
                 <button class="btn-icon" (click)="deleteUser(user.id!)" title="Delete">🗑️</button>
               </td>
@@ -421,6 +432,32 @@
               class="form-control"
               placeholder="work, important, urgent">
           </div>
+
+          <div class="form-group">
+            <label for="taskContributors">Contributors</label>
+            <div class="contributors-section">
+              <div class="selected-contributors" *ngIf="selectedContributors.length > 0">
+                <div class="contributor-chip" *ngFor="let contributor of selectedContributors; let i = index">
+                  <span>{{ contributor.username }}</span>
+                  <button type="button" class="remove-contributor" (click)="removeContributor(i)" title="Remove contributor">✕</button>
+                </div>
+              </div>
+              
+              <div class="add-contributor">
+                <select 
+                  class="form-control" 
+                  [(ngModel)]="selectedContributorId" 
+                  name="contributorSelect"
+                  (change)="addContributor()">
+                  <option value="">Select a contributor to add</option>
+                  <option *ngFor="let user of availableActiveUsers" [value]="user.id" 
+                          [disabled]="isUserAlreadySelected(user.id!)">
+                    {{ user.username }}<span *ngIf="user.email"> ({{ user.email }})</span>
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -508,6 +545,14 @@
             <select id="userRole" name="role" [(ngModel)]="newUser.role" class="form-control">
               <option value="USER">User</option>
               <option value="ADMIN">Admin</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="userStatus">Status</label>
+            <select id="userStatus" name="isActive" [(ngModel)]="newUser.isActive" class="form-control" (ngModelChange)="onStatusChange($event)">
+              <option [ngValue]="true">Active</option>
+              <option [ngValue]="false">Inactive</option>
             </select>
           </div>
         </div>

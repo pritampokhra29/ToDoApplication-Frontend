@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
-import { catchError, retry, tap, switchMap } from 'rxjs/operators';
+import { catchError, retry, tap, switchMap, map } from 'rxjs/operators';
 
 export interface Task {
   id?: number;
@@ -52,6 +52,7 @@ export interface RegisterRequest {
   role?: 'ADMIN' | 'USER';
   firstName?: string;
   lastName?: string;
+  isActive?: boolean;
 }
 
 export interface TaskRequest {
@@ -114,19 +115,22 @@ export class ApiService {
     });
 
     if (includeAuth) {
-      const token = this.tokenSubject.value;
+      const token = this.tokenSubject.value || this.getStoredToken();
       if (token) {
         headers = headers.set('Authorization', `Bearer ${token}`);
         console.log('Adding Bearer token to request:', token.substring(0, 20) + '...'); // Debug log
+        console.log('Full Authorization header:', `Bearer ${token}`); // Debug log
       } else {
         console.warn('No JWT token available for request'); // Debug log
+        console.warn('Token from subject:', this.tokenSubject.value);
+        console.warn('Token from localStorage:', this.getStoredToken());
       }
     }
 
     return { headers };
   }
 
-  // Get HTTP headers with Basic Auth for login
+  // Get HTTP headers with Basic Auth for login (CORS-friendly)
   private getBasicAuthHeaders(username: string, password: string): { headers: HttpHeaders } {
     const credentials = btoa(`${username}:${password}`);
     return {
@@ -143,9 +147,17 @@ export class ApiService {
    * Login user with Basic Auth and get JWT token
    */
   login(credentials: LoginRequest): Observable<LoginResponse> {
-    const authHeaders = this.getBasicAuthHeaders(credentials.username, credentials.password);
+    console.log('Login attempt with URL:', `${this.authUrl}/login`);
     
-    return this.http.post<LoginResponse>(`${this.authUrl}/login`, credentials, authHeaders)
+    // Try a simple POST request with credentials in body (no custom headers)
+    const loginData = {
+      username: credentials.username,
+      password: credentials.password
+    };
+    
+    console.log('Login data:', loginData);
+    
+    return this.http.post<LoginResponse>(`${this.authUrl}/login`, loginData)
       .pipe(
         tap((response) => {
           console.log('Login response:', response); // Debug log
@@ -163,7 +175,33 @@ export class ApiService {
             console.error('No token found in response:', response);
           }
         }),
-        catchError(this.handleError)
+        catchError((error) => {
+          console.error('Simple POST login error:', error);
+          console.error('Error status:', error.status);
+          console.error('Error message:', error.message);
+          
+          // If simple POST fails, try with Basic Auth headers
+          console.log('Simple POST failed, trying Basic Auth...');
+          const authHeaders = this.getBasicAuthHeaders(credentials.username, credentials.password);
+          
+          return this.http.post<LoginResponse>(`${this.authUrl}/login`, {}, authHeaders)
+            .pipe(
+              tap((response) => {
+                console.log('Basic Auth login response:', response);
+                
+                const token = response.accessToken || response.token;
+                const username = response.username || response.user?.username || credentials.username;
+                
+                if (token) {
+                  localStorage.setItem('jwt_token', token);
+                  localStorage.setItem('username', username);
+                  this.tokenSubject.next(token);
+                  console.log('JWT token stored:', token.substring(0, 20) + '...');
+                }
+              }),
+              catchError(this.handleError)
+            );
+        })
       );
   }
 
@@ -396,10 +434,89 @@ export class ApiService {
    * Get all users (Admin only)
    */
   getAllUsers(): Observable<User[]> {
-    const url = `${this.baseUrl}/admin/users`;
+    const url = `${this.baseUrl}/auth/admin/users`;
     
-    return this.http.get<User[]>(url, this.getHttpOptions())
+    console.log('API: Fetching all users from URL:', url);
+    console.log('API: HTTP options:', this.getHttpOptions());
+    
+    return this.http.get<any>(url, this.getHttpOptions())
       .pipe(
+        tap(response => {
+          console.log('API: Raw response from backend:', response);
+          console.log('API: Response type:', typeof response);
+          console.log('API: Is array:', Array.isArray(response));
+          
+          // Log detailed info about the first user if available
+          if (Array.isArray(response) && response.length > 0) {
+            console.log('API: First user sample:', response[0]);
+            console.log('API: First user isActive:', response[0].isActive, 'type:', typeof response[0].isActive);
+          }
+        }),
+        map(response => {
+          // Handle different response formats
+          let users: any[];
+          
+          if (Array.isArray(response)) {
+            users = response;
+          } else if (response && Array.isArray(response.data)) {
+            users = response.data;
+          } else if (response && Array.isArray(response.users)) {
+            users = response.users;
+            console.log('API: Found users in response.users array');
+          } else if (response === null || response === undefined) {
+            console.warn('API: Received null/undefined response, returning empty array');
+            users = [];
+          } else {
+            console.error('API: Unexpected response format:', response);
+            console.error('API: Response type:', typeof response);
+            console.error('API: Response keys:', Object.keys(response || {}));
+            throw new Error('Invalid response format: expected array of users but got: ' + typeof response);
+          }
+          
+          console.log('API: Extracted users array:', users);
+          console.log('API: Users count:', users.length);
+          
+          // Process users and map backend 'active' field to frontend 'isActive'
+          return users.map(user => {
+            console.log('API: Processing user:', user.username, 'active:', user.active, 'type:', typeof user.active);
+            
+            // Map backend 'active' field to frontend 'isActive' field
+            let isActive = user.active;
+            
+            // Handle different formats of active field
+            if (typeof user.active === 'string') {
+              if (user.active.toLowerCase() === 'true') {
+                isActive = true;
+              } else if (user.active.toLowerCase() === 'false') {
+                isActive = false;
+              }
+              console.log('API: Converted string active:', user.active, 'to boolean:', isActive);
+            }
+            
+            // Handle number format (1 = true, 0 = false)
+            if (typeof user.active === 'number') {
+              isActive = user.active === 1;
+              console.log('API: Converted number active:', user.active, 'to boolean:', isActive);
+            }
+            
+            // Default to true if the field is missing completely
+            if (isActive === null || isActive === undefined) {
+              isActive = true;
+              console.log('API: Set default isActive to true for user:', user.username);
+            }
+            
+            console.log('API: Final isActive for', user.username, ':', isActive);
+            
+            return {
+              ...user,
+              isActive: isActive, // Map backend 'active' to frontend 'isActive'
+              role: user.role || 'USER'
+            };
+          });
+        }),
+        tap(processedUsers => {
+          console.log('API: Processed users with defaults:', processedUsers);
+        }),
         retry(1),
         catchError(this.handleError)
       );
@@ -409,7 +526,113 @@ export class ApiService {
    * Register new user (Admin only)
    */
   registerUser(userData: RegisterRequest): Observable<User> {
-    const url = `${this.baseUrl}/admin/register`;
+    const url = `${this.baseUrl}/auth/register`;
+    
+    // Create a copy and ensure proper field mapping for registration
+    // Send both 'isActive' and 'active' fields to ensure backend compatibility
+    const registrationData = { 
+      ...userData,
+      // Ensure isActive is properly set as boolean
+      isActive: userData.isActive === true || (userData.isActive as any) === 'true',
+      // Also send 'active' field in case backend expects this name for registration
+      active: userData.isActive === true || (userData.isActive as any) === 'true'
+    };
+    
+    console.log('API: Registering user at URL:', url);
+    console.log('API: Original user data:', userData);
+    console.log('API: isActive type (original):', typeof userData.isActive);
+    console.log('API: isActive value (original):', userData.isActive);
+    console.log('API: Processed registration data:', registrationData);
+    console.log('API: isActive type (processed):', typeof registrationData.isActive);
+    console.log('API: isActive value (processed):', registrationData.isActive);
+    console.log('API: HTTP options:', this.getHttpOptions());
+    
+    return this.http.post<any>(url, registrationData, { 
+      ...this.getHttpOptions(),
+      observe: 'response',
+      responseType: 'text' as 'json'
+    })
+      .pipe(
+        tap((response: any) => {
+          console.log('API: Register user full response:', response);
+          console.log('API: Register user status code:', response.status);
+          console.log('API: Register user body:', response.body);
+          console.log('API: Register user headers:', response.headers);
+        }),
+        map((response: any): User => {
+          // Handle 201 Created status code
+          if (response.status === 201 || response.status === 200) {
+            // If the backend returns 201 with a success message or empty body,
+            // create a mock user object since the user was created successfully
+            let user: User;
+            try {
+              if (response.body && typeof response.body === 'string' && response.body.trim().startsWith('{')) {
+                user = JSON.parse(response.body);
+              } else {
+                // Create a mock user object if no user data is returned
+                user = {
+                  id: Date.now(), // temporary ID
+                  username: userData.username,
+                  email: userData.email,
+                  role: userData.role || 'USER',
+                  isActive: true, // New users are active by default
+                  createdAt: new Date()
+                };
+              }
+            } catch (parseError) {
+              console.log('API: Response body is not JSON, creating mock user:', parseError);
+              // Create a mock user object since the registration was successful
+              user = {
+                id: Date.now(), // temporary ID
+                username: userData.username,
+                email: userData.email,
+                role: userData.role || 'USER',
+                isActive: true, // New users are active by default
+                createdAt: new Date()
+              };
+            }
+            return user;
+          } else {
+            throw new Error(`Unexpected status code: ${response.status}`);
+          }
+        }),
+        catchError((error: any) => {
+          console.error('API: Register user error:', error);
+          console.error('API: Error status:', error.status);
+          console.error('API: Error body:', error.error);
+          
+          // If we get a 201 status in the error (which Angular sometimes treats as an error),
+          // treat it as success
+          if (error.status === 201) {
+            console.log('API: Treating 201 status as success despite error');
+            const user: User = {
+              id: Date.now(), // temporary ID
+              username: userData.username,
+              email: userData.email,
+              role: userData.role || 'USER',
+              isActive: true, // New users are active by default
+              createdAt: new Date()
+            };
+            return new Observable<User>(observer => {
+              observer.next(user);
+              observer.complete();
+            });
+          }
+          
+          return this.handleError(error);
+        })
+      );
+  }
+
+  /**
+   * Update user (Admin only)
+   */
+  updateUser(userId: number, userData: Partial<User>): Observable<User> {
+    const url = `${this.baseUrl}/auth/admin/users/${userId}`;
+    
+    console.log('API: Updating user at URL:', url);
+    console.log('API: User data:', userData);
+    console.log('API: HTTP options:', this.getHttpOptions());
     
     return this.http.post<User>(url, userData, this.getHttpOptions())
       .pipe(
@@ -419,13 +642,49 @@ export class ApiService {
   }
 
   /**
-   * Update user (Admin only)
+   * Toggle user status (Admin only) - Uses update user endpoint
    */
-  updateUser(userId: number, userData: Partial<User>): Observable<User> {
-    const url = `${this.baseUrl}/admin/users/${userId}`;
+  toggleUserStatus(userId: number, isActive: boolean): Observable<User> {
+    const url = `${this.baseUrl}/auth/admin/users/${userId}`;
+    // Send 'isActive' field to backend (the DTO expects 'isActive')
+    const updateData = { isActive: isActive };
     
-    return this.http.put<User>(url, userData, this.getHttpOptions())
+    console.log('API: Updating user status at URL:', url);
+    console.log('API: Update data (backend expects isActive field):', updateData);
+    console.log('API: Target status:', isActive ? 'ACTIVE' : 'INACTIVE');
+    console.log('API: HTTP options:', this.getHttpOptions());
+    
+    return this.http.post<any>(url, updateData, this.getHttpOptions())
       .pipe(
+        map(response => {
+          console.log('API: Raw backend response:', response);
+          
+          // Handle different possible response formats from backend
+          let mappedUser: any;
+          
+          if (response && typeof response === 'object') {
+            // Check what fields are available in the response
+            console.log('API: Available fields in response:', Object.keys(response));
+            
+            // Map the response, prioritizing the field we sent but fallback to other formats
+            mappedUser = {
+              ...response,
+              isActive: response.isActive !== undefined ? response.isActive : 
+                       response.active !== undefined ? response.active : 
+                       isActive // fallback to what we intended to set
+            };
+          } else {
+            // If response is not an object, create a minimal user object
+            mappedUser = {
+              id: userId,
+              isActive: isActive
+            };
+          }
+          
+          console.log('API: Final mapped user after status update:', mappedUser);
+          console.log('API: Final user status (isActive):', mappedUser.isActive);
+          return mappedUser;
+        }),
         retry(1),
         catchError(this.handleError)
       );
@@ -435,7 +694,7 @@ export class ApiService {
    * Delete user (Admin only)
    */
   deleteUser(userId: number): Observable<any> {
-    const url = `${this.baseUrl}/admin/users/${userId}`;
+    const url = `${this.baseUrl}/auth/admin/users/${userId}`;
     
     return this.http.delete(url, this.getHttpOptions())
       .pipe(
@@ -448,10 +707,118 @@ export class ApiService {
    * Get users for task assignment
    */
   getUsersForAssignment(): Observable<User[]> {
-    const url = `${this.baseUrl}/users/assignable`;
+    const url = `${this.baseUrl}/auth/users/active`;
     
-    return this.http.get<User[]>(url, this.getHttpOptions())
+    console.log('API: Fetching users for assignment from URL:', url);
+    
+    return this.http.get<any>(url, this.getHttpOptions())
       .pipe(
+        tap(response => {
+          console.log('API: Assignment users response:', response);
+        }),
+        map(response => {
+          // Handle different response formats
+          let users: any[];
+          
+          if (Array.isArray(response)) {
+            users = response;
+          } else if (response && Array.isArray(response.data)) {
+            users = response.data;
+          } else if (response && Array.isArray(response.users)) {
+            users = response.users;
+          } else if (response === null || response === undefined) {
+            console.warn('API: Received null/undefined response for assignment users, returning empty array');
+            users = [];
+          } else {
+            console.error('API: Unexpected assignment users response format:', response);
+            throw new Error('Invalid response format: expected array of users');
+          }
+          
+          // Map backend 'active' field to frontend 'isActive' field
+          const mappedUsers = users.map(user => {
+            console.log('API: Processing assignment user:', user.username, 'active:', user.active, 'type:', typeof user.active);
+            
+            // Map backend 'active' field to frontend 'isActive' field
+            let isActive = user.active;
+            
+            // Handle different formats of active field
+            if (typeof user.active === 'string') {
+              if (user.active.toLowerCase() === 'true') {
+                isActive = true;
+              } else if (user.active.toLowerCase() === 'false') {
+                isActive = false;
+              }
+            }
+            
+            const mappedUser = { ...user, isActive };
+            console.log('API: Mapped assignment user:', mappedUser.username, 'isActive:', mappedUser.isActive);
+            return mappedUser;
+          });
+          
+          console.log('API: Final mapped assignment users:', mappedUsers);
+          return mappedUsers;
+        }),
+        retry(1),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Get active users for task contributors
+   */
+  getActiveUsers(): Observable<User[]> {
+    const url = `${this.baseUrl}/auth/users/active`;
+    
+    console.log('API: Fetching active users from URL:', url);
+    console.log('API: HTTP options:', this.getHttpOptions());
+    
+    return this.http.get<any>(url, this.getHttpOptions())
+      .pipe(
+        tap(response => {
+          console.log('API: Active users response:', response);
+        }),
+        map(response => {
+          // Handle different response formats
+          let users: any[];
+          
+          if (Array.isArray(response)) {
+            users = response;
+          } else if (response && Array.isArray(response.data)) {
+            users = response.data;
+          } else if (response && Array.isArray(response.users)) {
+            users = response.users;
+          } else if (response === null || response === undefined) {
+            console.warn('API: Received null/undefined response for active users, returning empty array');
+            users = [];
+          } else {
+            console.error('API: Unexpected active users response format:', response);
+            throw new Error('Invalid response format: expected array of active users');
+          }
+          
+          // Map backend 'active' field to frontend 'isActive' field for active users
+          const mappedUsers = users.map(user => {
+            console.log('API: Processing active user:', user.username, 'active:', user.active, 'type:', typeof user.active);
+            
+            // Map backend 'active' field to frontend 'isActive' field
+            let isActive = user.active;
+            
+            // Handle different formats of active field
+            if (typeof user.active === 'string') {
+              if (user.active.toLowerCase() === 'true') {
+                isActive = true;
+              } else if (user.active.toLowerCase() === 'false') {
+                isActive = false;
+              }
+            }
+            
+            const mappedUser = { ...user, isActive };
+            console.log('API: Mapped active user:', mappedUser.username, 'isActive:', mappedUser.isActive);
+            return mappedUser;
+          });
+          
+          console.log('API: Final mapped active users:', mappedUsers);
+          return mappedUsers;
+        }),
         retry(1),
         catchError(this.handleError)
       );
@@ -517,6 +884,15 @@ export class ApiService {
   private handleError(error: HttpErrorResponse) {
     let errorMessage = 'Unknown error!';
     
+    console.error('API Error Details:', {
+      status: error.status,
+      statusText: error.statusText,
+      message: error.message,
+      error: error.error,
+      url: error.url,
+      headers: error.headers
+    });
+    
     if (error.error instanceof ErrorEvent) {
       // Client-side errors
       errorMessage = `Error: ${error.error.message}`;
@@ -535,7 +911,7 @@ export class ApiService {
           }
           break;
         case 403:
-          errorMessage = 'Forbidden - You do not have permission';
+          errorMessage = 'Forbidden - You do not have permission for this action';
           break;
         case 404:
           errorMessage = 'Not Found - The requested resource was not found';

@@ -7,8 +7,8 @@ import { ApiService, Task, User, TaskFilter, DashboardStats, RegisterRequest } f
   selector: 'app-root',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: './app.html',
-  styleUrls: ['./app.scss']
+  templateUrl: './app-enhanced.html',
+  styleUrls: ['./app-enhanced.scss']
 })
 export class AppComponent implements OnInit {
   protected readonly title = signal('Enhanced ToDoList');
@@ -51,6 +51,11 @@ export class AppComponent implements OnInit {
   users: User[] = [];
   availableUsers: User[] = [];
   
+  // Contributors for tasks
+  availableActiveUsers: User[] = [];
+  selectedContributors: User[] = [];
+  selectedContributorId: number | string = '';
+  
   // Admin features
   showUserModal = false;
   newUser: RegisterRequest = {
@@ -59,7 +64,8 @@ export class AppComponent implements OnInit {
     email: '',
     role: 'USER',
     firstName: '',
-    lastName: ''
+    lastName: '',
+    isActive: true
   };
   editingUser: User | null = null;
   
@@ -76,9 +82,17 @@ export class AppComponent implements OnInit {
   constructor(private apiService: ApiService) {}
 
   ngOnInit() {
-    this.checkAuthStatus();
-    if (this.isLoggedIn) {
-      this.loadInitialData();
+    console.log('Component initialized');
+    
+    // Add a small delay to ensure browser environment is ready
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        this.checkAuthStatus();
+        console.log('After checkAuthStatus - isLoggedIn:', this.isLoggedIn, 'isAdmin:', this.isAdmin, 'currentUser:', this.currentUser);
+        if (this.isLoggedIn) {
+          this.loadInitialData();
+        }
+      }, 100);
     }
   }
 
@@ -87,17 +101,29 @@ export class AppComponent implements OnInit {
   checkAuthStatus() {
     // Check if we're in browser environment
     if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      console.log('Not in browser environment');
       return;
     }
     
     const token = localStorage.getItem('jwt_token');
     const userData = localStorage.getItem('user_data');
     
+    console.log('Token:', token ? 'exists' : 'not found');
+    console.log('User data:', userData);
+    
     if (token && userData) {
       this.isLoggedIn = true;
       this.currentUser = JSON.parse(userData);
       this.isAdmin = this.currentUser?.role === 'ADMIN';
       console.log('User logged in:', this.currentUser);
+      console.log('Is admin:', this.isAdmin);
+      
+      // Load admin data if user is admin
+      if (this.isAdmin) {
+        console.log('Loading admin data...');
+        this.loadUsers();
+        this.loadUsersForAssignment();
+      }
     }
   }
 
@@ -105,8 +131,12 @@ export class AppComponent implements OnInit {
     this.loading = true;
     this.error = '';
     
+    console.log('Attempting login with:', this.loginData.username);
+    
     this.apiService.login(this.loginData).subscribe({
       next: (response) => {
+        console.log('Login response:', response);
+        
         if (response && (response.accessToken || response.token)) {
           const token = response.accessToken || response.token;
           
@@ -114,28 +144,43 @@ export class AppComponent implements OnInit {
           if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
             localStorage.setItem('jwt_token', token!);
             
+            // Automatically set admin role for 'admin' user or if role is ADMIN
+            const isAdminUser = this.loginData.username.toLowerCase() === 'admin' || 
+                               response.role === 'ADMIN' || 
+                               response.user?.role === 'ADMIN';
+            
             const userData: User = {
               username: response.username || this.loginData.username,
-              role: (response.role as 'ADMIN' | 'USER') || 'USER',
+              role: isAdminUser ? 'ADMIN' : 'USER',
               email: response.user?.email
             };
+            
             localStorage.setItem('user_data', JSON.stringify(userData));
+            console.log('Stored user data:', userData);
           }
           
           this.isLoggedIn = true;
           this.currentUser = {
             username: response.username || this.loginData.username,
-            role: (response.role as 'ADMIN' | 'USER') || 'USER',
+            role: (this.loginData.username.toLowerCase() === 'admin' || 
+                   response.role === 'ADMIN' || 
+                   response.user?.role === 'ADMIN') ? 'ADMIN' : 'USER',
             email: response.user?.email
           };
           this.isAdmin = this.currentUser.role === 'ADMIN';
           
+          console.log('Login successful - User:', this.currentUser, 'Is Admin:', this.isAdmin);
+          
           this.loadInitialData();
           this.showSuccess('Login successful!');
+        } else {
+          console.error('Invalid login response - no token found:', response);
+          this.showError('Login failed - no token received');
         }
         this.loading = false;
       },
       error: (error) => {
+        console.error('Login error:', error);
         this.showError('Login failed. Please check your credentials.');
         this.loading = false;
       }
@@ -210,12 +255,15 @@ export class AppComponent implements OnInit {
   }
 
   loadUsers() {
+    console.log('Loading users...');
     this.apiService.getAllUsers().subscribe({
       next: (users) => {
+        console.log('Users loaded successfully:', users);
         this.users = users;
       },
       error: (error) => {
         console.error('Error loading users:', error);
+        this.showError('Failed to load users: ' + (error.error?.message || error.message || 'Unknown error'));
       }
     });
   }
@@ -227,6 +275,20 @@ export class AppComponent implements OnInit {
       },
       error: (error) => {
         console.error('Error loading assignable users:', error);
+      }
+    });
+  }
+
+  loadActiveUsers() {
+    console.log('Loading active users for contributors...');
+    this.apiService.getActiveUsers().subscribe({
+      next: (users) => {
+        console.log('Active users loaded successfully:', users);
+        this.availableActiveUsers = users;
+      },
+      error: (error) => {
+        console.error('Error loading active users:', error);
+        this.showError('Failed to load active users: ' + (error.error?.message || error.message || 'Unknown error'));
       }
     });
   }
@@ -248,15 +310,23 @@ export class AppComponent implements OnInit {
     if (task) {
       this.editingTask = { ...task };
       this.newTask = { ...task };
+      this.selectedContributors = task.collaborators || [];
     } else {
       this.resetTaskForm();
+      this.selectedContributors = [];
     }
+    
+    // Load active users for contributors
+    this.loadActiveUsers();
+    
     this.showTaskModal = true;
   }
 
   closeTaskModal() {
     this.showTaskModal = false;
     this.editingTask = null;
+    this.selectedContributors = [];
+    this.selectedContributorId = '';
     this.resetTaskForm();
   }
 
@@ -276,7 +346,8 @@ export class AppComponent implements OnInit {
     const taskData = {
       ...this.newTask,
       status: this.newTask.status || 'PENDING',
-      priority: this.newTask.priority || 'MEDIUM'
+      priority: this.newTask.priority || 'MEDIUM',
+      collaborators: this.selectedContributors
     };
 
     if (this.editingTask) {
@@ -490,7 +561,9 @@ export class AppComponent implements OnInit {
   // ==================== USER MANAGEMENT (ADMIN) ====================
 
   openUserModal(user?: User) {
+    console.log('Opening user modal. User parameter:', user);
     if (user) {
+      console.log('Editing existing user:', user.username);
       this.editingUser = { ...user };
       this.newUser = {
         username: user.username,
@@ -498,12 +571,16 @@ export class AppComponent implements OnInit {
         email: user.email || '',
         role: user.role || 'USER',
         firstName: '',
-        lastName: ''
+        lastName: '',
+        isActive: user.isActive !== undefined ? user.isActive : true
       };
+      console.log('Set newUser for editing. isActive:', this.newUser.isActive);
     } else {
+      console.log('Creating new user - calling resetUserForm()');
       this.resetUserForm();
     }
     this.showUserModal = true;
+    console.log('Modal opened. Final newUser state:', this.newUser);
   }
 
   closeUserModal() {
@@ -523,6 +600,7 @@ export class AppComponent implements OnInit {
       return;
     }
 
+    console.log('Attempting to save user:', this.newUser);
     this.loading = true;
 
     if (this.editingUser) {
@@ -532,8 +610,10 @@ export class AppComponent implements OnInit {
         role: this.newUser.role
       };
 
+      console.log('Updating user with data:', updateData);
       this.apiService.updateUser(this.editingUser.id!, updateData).subscribe({
         next: (updatedUser) => {
+          console.log('User updated successfully:', updatedUser);
           const index = this.users.findIndex(u => u.id === updatedUser.id);
           if (index !== -1) {
             this.users[index] = updatedUser;
@@ -543,20 +623,31 @@ export class AppComponent implements OnInit {
           this.loading = false;
         },
         error: (error) => {
-          this.showError('Failed to update user');
+          console.error('Error updating user:', error);
+          this.showError('Failed to update user: ' + (error.error?.message || error.message || 'Unknown error'));
           this.loading = false;
         }
       });
     } else {
+      console.log('Creating new user with data:', this.newUser);
+      console.log('newUser.isActive type:', typeof this.newUser.isActive);
+      console.log('newUser.isActive value:', this.newUser.isActive);
+      console.log('Full newUser object:', JSON.stringify(this.newUser, null, 2));
+      
       this.apiService.registerUser(this.newUser).subscribe({
         next: (user) => {
-          this.users.push(user);
+          console.log('User created successfully:', user);
+          // Refresh the user list to get updated data from backend
+          this.loadUsers();
           this.closeUserModal();
           this.showSuccess('User created successfully');
           this.loading = false;
         },
         error: (error) => {
-          this.showError('Failed to create user');
+          console.error('Error creating user:', error);
+          const errorMessage = error.error?.message || error.message || 'Unknown error';
+          console.error('Detailed error:', error);
+          this.showError('Failed to create user: ' + errorMessage);
           this.loading = false;
         }
       });
@@ -577,12 +668,110 @@ export class AppComponent implements OnInit {
     });
   }
 
+  toggleUserStatus(user: any) {
+    const currentStatus = user.isActive;
+    const action = currentStatus ? 'deactivate' : 'activate';
+    const confirmMessage = `Are you sure you want to ${action} user "${user.username}"?`;
+    
+    if (!confirm(confirmMessage)) return;
+
+    const newStatus = !currentStatus;
+    console.log('Component: Toggling user status:', user.username);
+    console.log('Component: Current status (isActive):', currentStatus);
+    console.log('Component: Target status (isActive):', newStatus);
+    
+    this.apiService.toggleUserStatus(user.id, newStatus).subscribe({
+      next: (updatedUser) => {
+        console.log('Component: Received updated user from API:', updatedUser);
+        console.log('Component: Updated user isActive:', updatedUser.isActive);
+        
+        // Update the user in the local array with proper change detection
+        const userIndex = this.users.findIndex(u => u.id === user.id);
+        if (userIndex !== -1) {
+          // Create a new array to trigger change detection
+          // Ensure we're using the correct status from the response
+          const finalStatus = updatedUser.isActive !== undefined ? updatedUser.isActive : newStatus;
+          
+          this.users = this.users.map((u, index) => 
+            index === userIndex 
+              ? { ...u, isActive: finalStatus }
+              : u
+          );
+          
+          console.log('Component: Updated user in array:', this.users[userIndex]);
+          console.log('Component: Updated users array length:', this.users.length);
+        }
+        
+        // Also update active users list if it exists
+        if (this.availableActiveUsers && this.availableActiveUsers.length > 0) {
+          this.loadActiveUsers(); // Reload to ensure consistency
+        }
+        
+        // Use the final status for the success message
+        const finalStatus = updatedUser.isActive !== undefined ? updatedUser.isActive : newStatus;
+        const statusText = finalStatus ? 'activated' : 'deactivated';
+        this.showSuccess(`User ${statusText} successfully`);
+        console.log('Component: User status update completed. Final status:', finalStatus);
+      },
+      error: (error) => {
+        console.error('Component: Error updating user status:', error);
+        this.showError(`Failed to ${action} user: ` + (error.error?.message || error.message || 'Unknown error'));
+      }
+    });
+  }
+
   // ==================== UTILITY METHODS ====================
+
+  // Temporary method to force admin role for testing
+  forceAdminRole() {
+    if (this.currentUser) {
+      this.currentUser.role = 'ADMIN';
+      this.isAdmin = true;
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem('user_data', JSON.stringify(this.currentUser));
+      }
+      console.log('Forced admin role:', this.currentUser);
+    }
+  }
 
   resetForms() {
     this.resetTaskForm();
     this.resetUserForm();
   }
+
+  // ==================== CONTRIBUTOR MANAGEMENT METHODS ====================
+
+  addContributor() {
+    if (!this.selectedContributorId) return;
+    
+    const userId = typeof this.selectedContributorId === 'string' ? 
+                   parseInt(this.selectedContributorId) : 
+                   this.selectedContributorId;
+    
+    const user = this.availableActiveUsers.find(u => u.id === userId);
+    
+    if (user && !this.isUserAlreadySelected(userId)) {
+      this.selectedContributors.push(user);
+      console.log('Added contributor:', user.username);
+      console.log('Current contributors:', this.selectedContributors);
+    }
+    
+    this.selectedContributorId = '';
+  }
+
+  removeContributor(index: number) {
+    if (index >= 0 && index < this.selectedContributors.length) {
+      const removedUser = this.selectedContributors.splice(index, 1)[0];
+      console.log('Removed contributor:', removedUser.username);
+      console.log('Current contributors:', this.selectedContributors);
+    }
+  }
+
+  isUserAlreadySelected(userId: number): boolean {
+    return this.selectedContributors.some(user => user.id === userId);
+  }
+
+  // ==================== FORM RESET METHODS ====================
 
   resetTaskForm() {
     this.newTask = {
@@ -595,15 +784,26 @@ export class AppComponent implements OnInit {
     };
   }
 
+  onStatusChange(value: any) {
+    console.log('Status dropdown changed. Raw value:', value);
+    console.log('Status dropdown changed. Type:', typeof value);
+    this.newUser.isActive = value === true || value === 'true';
+    console.log('Status dropdown changed. Final newUser.isActive:', this.newUser.isActive);
+  }
+
   resetUserForm() {
+    console.log('Resetting user form...');
     this.newUser = {
       username: '',
       password: '',
       email: '',
       role: 'USER',
       firstName: '',
-      lastName: ''
+      lastName: '',
+      isActive: true
     };
+    console.log('Form reset completed. newUser.isActive:', this.newUser.isActive);
+    console.log('Form reset completed. typeof newUser.isActive:', typeof this.newUser.isActive);
   }
 
   showError(message: string) {
