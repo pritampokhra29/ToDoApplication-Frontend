@@ -55,7 +55,14 @@
             [(ngModel)]="loginData.username" 
             required
             class="form-control"
+            [class.error]="hasFieldError('username', 'login')"
+            (blur)="validateFieldOnBlur('username', loginData.username, 'login')"
             placeholder="Enter your username">
+          <div class="validation-errors" *ngIf="hasFieldError('username', 'login')">
+            <div class="error-message" *ngFor="let error of getFieldErrors('username', 'login')">
+              {{ error }}
+            </div>
+          </div>
         </div>
         
         <div class="form-group">
@@ -67,10 +74,17 @@
             [(ngModel)]="loginData.password" 
             required
             class="form-control"
+            [class.error]="hasFieldError('password', 'login')"
+            (blur)="validateFieldOnBlur('password', loginData.password, 'login')"
             placeholder="Enter your password">
+          <div class="validation-errors" *ngIf="hasFieldError('password', 'login')">
+            <div class="error-message" *ngFor="let error of getFieldErrors('password', 'login')">
+              {{ error }}
+            </div>
+          </div>
         </div>
         
-        <button type="submit" class="btn btn-primary" [disabled]="loading || !loginForm.form.valid">
+        <button type="submit" class="btn btn-primary" [disabled]="loading">
           <span *ngIf="loading">🔄 Logging in...</span>
           <span *ngIf="!loading">🔐 Login</span>
         </button>
@@ -292,6 +306,11 @@
         </div>
       </div>
 
+      <div class="no-data-message" *ngIf="!dashboardStats">
+        <p>📊 Loading dashboard statistics...</p>
+        <p>If this persists, try clicking the "Refresh Stats" button below.</p>
+      </div>
+
       <button class="btn btn-primary" (click)="loadDashboardStats()">🔄 Refresh Stats</button>
     </div>
 
@@ -368,7 +387,14 @@
               [(ngModel)]="newTask.title" 
               required
               class="form-control"
+              [class.error]="hasFieldError('title', 'task')"
+              (blur)="validateFieldOnBlur('title', newTask.title, 'task')"
               placeholder="Enter task title">
+            <div class="validation-errors" *ngIf="hasFieldError('title', 'task')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('title', 'task')">
+                {{ error }}
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
@@ -378,8 +404,15 @@
               name="description"
               [(ngModel)]="newTask.description"
               class="form-control"
+              [class.error]="hasFieldError('description', 'task')"
+              (blur)="validateFieldOnBlur('description', newTask.description, 'task')"
               rows="3"
               placeholder="Enter task description"></textarea>
+            <div class="validation-errors" *ngIf="hasFieldError('description', 'task')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('description', 'task')">
+                {{ error }}
+              </div>
+            </div>
           </div>
 
           <div class="form-row">
@@ -418,7 +451,14 @@
                 id="taskDueDate"
                 name="dueDate"
                 [(ngModel)]="newTask.dueDate"
-                class="form-control">
+                class="form-control"
+                [class.error]="hasFieldError('dueDate', 'task')"
+                (blur)="validateFieldOnBlur('dueDate', newTask.dueDate, 'task')">
+              <div class="validation-errors" *ngIf="hasFieldError('dueDate', 'task')">
+                <div class="error-message" *ngFor="let error of getFieldErrors('dueDate', 'task')">
+                  {{ error }}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -490,7 +530,14 @@
               [(ngModel)]="newUser.username" 
               required
               class="form-control"
+              [class.error]="hasFieldError('username', 'user')"
+              (blur)="validateFieldOnBlur('username', newUser.username, editingUser ? 'userUpdate' : 'register')"
               placeholder="Enter username">
+            <div class="validation-errors" *ngIf="hasFieldError('username', 'user')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('username', 'user')">
+                {{ error }}
+              </div>
+            </div>
           </div>
 
           <div class="form-group" *ngIf="!editingUser">
@@ -502,18 +549,33 @@
               [(ngModel)]="newUser.password" 
               required
               class="form-control"
+              [class.error]="hasFieldError('password', 'user')"
+              (blur)="validateFieldOnBlur('password', newUser.password, 'register')"
               placeholder="Enter password">
+            <div class="validation-errors" *ngIf="hasFieldError('password', 'user')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('password', 'user')">
+                {{ error }}
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
-            <label for="userEmail">Email</label>
+            <label for="userEmail">Email *</label>
             <input 
               type="email" 
               id="userEmail"
               name="email"
               [(ngModel)]="newUser.email"
+              required
               class="form-control"
+              [class.error]="hasFieldError('email', 'user')"
+              (blur)="validateFieldOnBlur('email', newUser.email, editingUser ? 'userUpdate' : 'register')"
               placeholder="Enter email address">
+            <div class="validation-errors" *ngIf="hasFieldError('email', 'user')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('email', 'user')">
+                {{ error }}
+              </div>
+            </div>
           </div>
 
           <div class="form-row">
@@ -525,7 +587,14 @@
                 name="firstName"
                 [(ngModel)]="newUser.firstName"
                 class="form-control"
+                [class.error]="hasFieldError('firstName', 'user')"
+                (blur)="validateFieldOnBlur('firstName', newUser.firstName, editingUser ? 'userUpdate' : 'register')"
                 placeholder="Enter first name">
+              <div class="validation-errors" *ngIf="hasFieldError('firstName', 'user')">
+                <div class="error-message" *ngFor="let error of getFieldErrors('firstName', 'user')">
+                  {{ error }}
+                </div>
+              </div>
             </div>
 
             <div class="form-group">
@@ -536,7 +605,14 @@
                 name="lastName"
                 [(ngModel)]="newUser.lastName"
                 class="form-control"
+                [class.error]="hasFieldError('lastName', 'user')"
+                (blur)="validateFieldOnBlur('lastName', newUser.lastName, editingUser ? 'userUpdate' : 'register')"
                 placeholder="Enter last name">
+              <div class="validation-errors" *ngIf="hasFieldError('lastName', 'user')">
+                <div class="error-message" *ngFor="let error of getFieldErrors('lastName', 'user')">
+                  {{ error }}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -559,7 +635,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" (click)="closeUserModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary" [disabled]="loading || !userForm.form.valid">
+          <button type="submit" class="btn btn-primary" [disabled]="loading">
             <span *ngIf="loading">🔄 Saving...</span>
             <span *ngIf="!loading">{{ editingUser ? '💾 Update' : '➕ Create' }}</span>
           </button>

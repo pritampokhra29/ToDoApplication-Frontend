@@ -2,6 +2,7 @@ import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService, Task, User, TaskFilter, DashboardStats, RegisterRequest } from './api.service';
+import { ValidationService, FieldValidationResult } from './validation.service';
 
 @Component({
   selector: 'app-root',
@@ -79,7 +80,13 @@ export class AppComponent implements OnInit {
   successMessage = '';
   showAdvancedFilters = false;
 
-  constructor(private apiService: ApiService) {}
+  // Validation
+  loginValidationErrors: FieldValidationResult = {};
+  userValidationErrors: FieldValidationResult = {};
+  taskValidationErrors: FieldValidationResult = {};
+  showValidationErrors = false;
+
+  constructor(private apiService: ApiService, private validationService: ValidationService) {}
 
   ngOnInit() {
     console.log('Component initialized');
@@ -128,6 +135,19 @@ export class AppComponent implements OnInit {
   }
 
   login() {
+    // Validate login form
+    this.loginValidationErrors = this.validationService.validateLoginForm(
+      this.loginData.username, 
+      this.loginData.password
+    );
+    
+    if (this.validationService.hasValidationErrors(this.loginValidationErrors)) {
+      this.showValidationErrors = true;
+      this.showError('Please fix the validation errors before submitting.');
+      return;
+    }
+    
+    this.showValidationErrors = false;
     this.loading = true;
     this.error = '';
     
@@ -294,19 +314,134 @@ export class AppComponent implements OnInit {
   }
 
   loadDashboardStats() {
+    console.log('Loading dashboard stats...');
+    
+    // First try to get stats from backend
     this.apiService.getDashboardStats().subscribe({
       next: (stats) => {
+        console.log('Dashboard stats loaded from backend:', stats);
         this.dashboardStats = stats;
       },
       error: (error) => {
-        console.error('Error loading dashboard stats:', error);
+        console.error('Error loading dashboard stats from backend:', error);
+        console.log('Calculating dashboard stats from local task data...');
+        
+        // Fallback: Calculate stats from local task data
+        this.calculateDashboardStatsFromTasks();
       }
     });
+  }
+
+  calculateDashboardStatsFromTasks() {
+    if (!this.tasks || this.tasks.length === 0) {
+      console.log('No tasks available for dashboard stats calculation');
+      // Create empty stats if no tasks
+      this.dashboardStats = {
+        totalTasks: 0,
+        completedTasks: 0,
+        pendingTasks: 0,
+        inProgressTasks: 0,
+        overdueTasks: 0,
+        tasksCompletedToday: 0,
+        tasksCompletedThisWeek: 0,
+        tasksCompletedThisMonth: 0,
+        totalUsers: this.users?.length || 0,
+        activeUsers: this.users?.filter(u => u.isActive)?.length || 0,
+        categoriesCount: this.categories?.length || 0,
+        averageTaskCompletionTime: 0,
+        tasksByCategory: {},
+        tasksByPriority: {},
+        recentActivity: []
+      };
+      return;
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Calculate basic stats
+    const totalTasks = this.tasks.length;
+    const completedTasks = this.tasks.filter(t => t.status === 'COMPLETED').length;
+    const pendingTasks = this.tasks.filter(t => t.status === 'PENDING').length;
+    const inProgressTasks = this.tasks.filter(t => t.status === 'IN_PROGRESS').length;
+    
+    // Calculate overdue tasks
+    const overdueTasks = this.tasks.filter(t => {
+      if (!t.dueDate || t.status === 'COMPLETED') return false;
+      const dueDate = new Date(t.dueDate);
+      return dueDate < now;
+    }).length;
+
+    // Calculate completion stats
+    const tasksCompletedToday = this.tasks.filter(t => {
+      if (t.status !== 'COMPLETED' || !t.updatedAt) return false;
+      const updatedDate = new Date(t.updatedAt);
+      return updatedDate >= today;
+    }).length;
+
+    const tasksCompletedThisWeek = this.tasks.filter(t => {
+      if (t.status !== 'COMPLETED' || !t.updatedAt) return false;
+      const updatedDate = new Date(t.updatedAt);
+      return updatedDate >= weekAgo;
+    }).length;
+
+    const tasksCompletedThisMonth = this.tasks.filter(t => {
+      if (t.status !== 'COMPLETED' || !t.updatedAt) return false;
+      const updatedDate = new Date(t.updatedAt);
+      return updatedDate >= monthAgo;
+    }).length;
+
+    // Calculate tasks by category
+    const tasksByCategory: { [key: string]: number } = {};
+    this.tasks.forEach(task => {
+      const category = task.category || 'Uncategorized';
+      tasksByCategory[category] = (tasksByCategory[category] || 0) + 1;
+    });
+
+    // Calculate tasks by priority
+    const tasksByPriority: { [key: string]: number } = {};
+    this.tasks.forEach(task => {
+      const priority = task.priority || 'MEDIUM';
+      tasksByPriority[priority] = (tasksByPriority[priority] || 0) + 1;
+    });
+
+    // Create dashboard stats object
+    this.dashboardStats = {
+      totalTasks,
+      completedTasks,
+      pendingTasks,
+      inProgressTasks,
+      overdueTasks,
+      tasksCompletedToday,
+      tasksCompletedThisWeek,
+      tasksCompletedThisMonth,
+      totalUsers: this.users?.length || 0,
+      activeUsers: this.users?.filter(u => u.isActive)?.length || 0,
+      categoriesCount: Object.keys(tasksByCategory).length,
+      averageTaskCompletionTime: 0, // Would need completion time tracking
+      tasksByCategory,
+      tasksByPriority,
+      recentActivity: this.tasks
+        .filter(t => t.updatedAt)
+        .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
+        .slice(0, 5)
+        .map(t => ({
+          taskTitle: t.title,
+          status: t.status,
+          updatedAt: t.updatedAt
+        }))
+    };
+
+    console.log('Calculated dashboard stats from local data:', this.dashboardStats);
   }
 
   // ==================== TASK MANAGEMENT ====================
 
   openTaskModal(task?: Task) {
+    this.clearValidationErrors(); // Clear validation errors when opening modal
+    
     if (task) {
       this.editingTask = { ...task };
       this.newTask = { ...task };
@@ -331,11 +466,23 @@ export class AppComponent implements OnInit {
   }
 
   saveTask() {
-    if (!this.newTask.title?.trim()) {
-      this.showError('Please enter a task title');
+    // Validate task form
+    this.taskValidationErrors = this.validationService.validateTaskForm({
+      title: this.newTask.title || '',
+      description: this.newTask.description || '',
+      dueDate: this.newTask.dueDate,
+      status: this.newTask.status || 'PENDING',
+      category: this.newTask.category || '',
+      priority: this.newTask.priority || 'MEDIUM'
+    });
+    
+    if (this.validationService.hasValidationErrors(this.taskValidationErrors)) {
+      this.showValidationErrors = true;
+      this.showError('Please fix the validation errors before submitting.');
       return;
     }
-
+    
+    this.showValidationErrors = false;
     this.loading = true;
     
     // Parse tags if they're a string
@@ -361,6 +508,11 @@ export class AppComponent implements OnInit {
           this.closeTaskModal();
           this.showSuccess('Task updated successfully');
           this.loading = false;
+          
+          // Refresh dashboard stats if on dashboard view
+          if (this.currentView === 'dashboard') {
+            this.calculateDashboardStatsFromTasks();
+          }
         },
         error: (error) => {
           this.showError('Failed to update task');
@@ -375,6 +527,11 @@ export class AppComponent implements OnInit {
           this.closeTaskModal();
           this.showSuccess('Task created successfully');
           this.loading = false;
+          
+          // Refresh dashboard stats if on dashboard view
+          if (this.currentView === 'dashboard') {
+            this.calculateDashboardStatsFromTasks();
+          }
         },
         error: (error) => {
           this.showError('Failed to create task');
@@ -392,6 +549,11 @@ export class AppComponent implements OnInit {
         this.tasks = this.tasks.filter(t => t.id !== taskId);
         this.applyFilters();
         this.showSuccess('Task deleted successfully');
+        
+        // Refresh dashboard stats if on dashboard view
+        if (this.currentView === 'dashboard') {
+          this.calculateDashboardStatsFromTasks();
+        }
       },
       error: (error) => {
         this.showError('Failed to delete task');
@@ -561,6 +723,8 @@ export class AppComponent implements OnInit {
   // ==================== USER MANAGEMENT (ADMIN) ====================
 
   openUserModal(user?: User) {
+    this.clearValidationErrors(); // Clear validation errors when opening modal
+    
     console.log('Opening user modal. User parameter:', user);
     if (user) {
       console.log('Editing existing user:', user.username);
@@ -590,16 +754,35 @@ export class AppComponent implements OnInit {
   }
 
   saveUser() {
-    if (!this.newUser.username?.trim()) {
-      this.showError('Please enter a username');
+    // Validate user form
+    if (this.editingUser) {
+      this.userValidationErrors = this.validationService.validateUserUpdateForm({
+        id: this.editingUser.id!,
+        username: this.newUser.username,
+        email: this.newUser.email,
+        password: this.newUser.password,
+        role: this.newUser.role,
+        firstName: this.newUser.firstName,
+        lastName: this.newUser.lastName
+      });
+    } else {
+      this.userValidationErrors = this.validationService.validateRegistrationForm({
+        username: this.newUser.username || '',
+        email: this.newUser.email || '',
+        password: this.newUser.password || '',
+        role: this.newUser.role,
+        firstName: this.newUser.firstName,
+        lastName: this.newUser.lastName
+      });
+    }
+    
+    if (this.validationService.hasValidationErrors(this.userValidationErrors)) {
+      this.showValidationErrors = true;
+      this.showError('Please fix the validation errors before submitting.');
       return;
     }
-
-    if (!this.editingUser && !this.newUser.password?.trim()) {
-      this.showError('Please enter a password');
-      return;
-    }
-
+    
+    this.showValidationErrors = false;
     console.log('Attempting to save user:', this.newUser);
     this.loading = true;
 
@@ -734,11 +917,6 @@ export class AppComponent implements OnInit {
     }
   }
 
-  resetForms() {
-    this.resetTaskForm();
-    this.resetUserForm();
-  }
-
   // ==================== CONTRIBUTOR MANAGEMENT METHODS ====================
 
   addContributor() {
@@ -853,5 +1031,79 @@ export class AppComponent implements OnInit {
 
   trackByTaskId(index: number, task: Task): number {
     return task.id || index;
+  }
+
+  // ==================== VALIDATION HELPERS ====================
+
+  validateFieldOnBlur(fieldName: string, value: any, context: 'login' | 'register' | 'userUpdate' | 'task' = 'register') {
+    const errors = this.validationService.validateField(fieldName, value, context);
+    
+    // Update the appropriate validation errors object
+    if (context === 'login') {
+      if (errors.length > 0) {
+        this.loginValidationErrors[fieldName] = errors;
+      } else {
+        delete this.loginValidationErrors[fieldName];
+      }
+    } else if (context === 'task') {
+      if (errors.length > 0) {
+        this.taskValidationErrors[fieldName] = errors;
+      } else {
+        delete this.taskValidationErrors[fieldName];
+      }
+    } else {
+      if (errors.length > 0) {
+        this.userValidationErrors[fieldName] = errors;
+      } else {
+        delete this.userValidationErrors[fieldName];
+      }
+    }
+  }
+
+  getFieldErrors(fieldName: string, context: 'login' | 'user' | 'task' = 'user'): string[] {
+    switch (context) {
+      case 'login':
+        return this.loginValidationErrors[fieldName] || [];
+      case 'task':
+        return this.taskValidationErrors[fieldName] || [];
+      case 'user':
+      default:
+        return this.userValidationErrors[fieldName] || [];
+    }
+  }
+
+  hasFieldError(fieldName: string, context: 'login' | 'user' | 'task' = 'user'): boolean {
+    return this.getFieldErrors(fieldName, context).length > 0;
+  }
+
+  clearValidationErrors() {
+    this.loginValidationErrors = {};
+    this.userValidationErrors = {};
+    this.taskValidationErrors = {};
+    this.showValidationErrors = false;
+  }
+
+  // Called when forms are reset
+  resetForms() {
+    this.newTask = {
+      title: '',
+      description: '',
+      priority: 'MEDIUM',
+      category: '',
+      tags: [],
+      dueDate: undefined
+    };
+    
+    this.newUser = {
+      username: '',
+      password: '',
+      email: '',
+      role: 'USER',
+      firstName: '',
+      lastName: '',
+      isActive: true
+    };
+    
+    this.clearValidationErrors();
   }
 }
