@@ -126,7 +126,8 @@ const App = (): React.ReactElement => {
     
     if (validationService.hasValidationErrors(errors)) {
       setLoginValidationErrors(errors);
-      showError('Please fix the validation errors before submitting.');
+      const specificErrors = validationService.formatValidationErrorsWithContext(errors);
+      showError(`Login validation failed: ${specificErrors}`);
       return;
     }
     
@@ -473,7 +474,8 @@ const App = (): React.ReactElement => {
     if (validationService.hasValidationErrors(taskValidationErrors)) {
       setTaskValidationErrors(taskValidationErrors);
       // setShowValidationErrors(true);
-      showError('Please fix the validation errors before submitting.');
+      const specificErrors = validationService.formatValidationErrorsWithContext(taskValidationErrors);
+      showError(`Task validation failed: ${specificErrors}`);
       return;
     }
     
@@ -602,7 +604,13 @@ const App = (): React.ReactElement => {
     }
 
     try {
+      setLoading(true);
+      showSuccess(`Updating ${selectedTasks.length} tasks individually...`);
+      
+      // Use the modified bulkUpdateTasks that handles individual requests internally
       const updatedTasks = await apiService.bulkUpdateTasks(selectedTasks, updates);
+      
+      // Update the tasks in state
       updatedTasks.forEach(updatedTask => {
         const index = tasks.findIndex((t: Task) => t.id === updatedTask.id);
         if (index !== -1) {
@@ -613,9 +621,20 @@ const App = (): React.ReactElement => {
       });
       applyFilters();
       clearSelection();
-      showSuccess(`${updatedTasks.length} tasks updated successfully`);
+      
+      // Show appropriate message based on success rate
+      if (updatedTasks.length === selectedTasks.length) {
+        showSuccess(`All ${updatedTasks.length} tasks updated successfully`);
+      } else if (updatedTasks.length > 0) {
+        showSuccess(`${updatedTasks.length} out of ${selectedTasks.length} tasks updated successfully`);
+      } else {
+        showError('No tasks were updated successfully');
+      }
     } catch (error: any) {
-      showError('Failed to update tasks');
+      console.error('Bulk update error:', error);
+      showError(`Failed to update tasks: ${error.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -679,7 +698,8 @@ const App = (): React.ReactElement => {
     if (validationService.hasValidationErrors(userValidationErrors)) {
       setUserValidationErrors(userValidationErrors);
       // setShowValidationErrors(true);
-      showError('Please fix the validation errors before submitting.');
+      const specificErrors = validationService.formatValidationErrorsWithContext(userValidationErrors);
+      showError(`User validation failed: ${specificErrors}`);
       return;
     }
     

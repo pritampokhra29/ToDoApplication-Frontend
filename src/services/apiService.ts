@@ -341,11 +341,59 @@ class ApiService {
 
   async bulkUpdateTasks(taskIds: number[], updates: Partial<Task>): Promise<Task[]> {
     try {
-      const url = `${this.tasksUrl}/bulk-update`;
-      const requestBody = { taskIds, updates };
-
-      const response: AxiosResponse<Task[]> = await axios.post(url, requestBody);
-      return response.data;
+      // Since /bulk-update endpoint is not available, handle bulk updates internally
+      // by sending individual update requests for each task
+      const updatePromises: Promise<{ success: boolean; task?: Task; error?: string; taskId: number }>[] = [];
+      
+      // Create individual update promises with error handling
+      for (const taskId of taskIds) {
+        const updatePromise = this.getTask(taskId)
+          .then(async (currentTask: Task) => {
+            const updatedTask: Task = {
+              ...currentTask,
+              ...updates,
+              id: taskId // Ensure ID is preserved
+            };
+            const result = await this.updateTask(updatedTask);
+            return { success: true, task: result, taskId };
+          })
+          .catch((error) => {
+            console.error(`Failed to update task ${taskId}:`, error);
+            return { 
+              success: false, 
+              error: error.message || 'Update failed', 
+              taskId 
+            };
+          });
+        updatePromises.push(updatePromise);
+      }
+      
+      // Execute all updates in parallel
+      const results = await Promise.all(updatePromises);
+      
+      // Separate successful and failed updates
+      const successfulTasks = results
+        .filter(result => result.success && result.task)
+        .map(result => result.task!);
+      
+      const failedTasks = results.filter(result => !result.success);
+      
+      // If some tasks failed, log the errors but still return successful ones
+      if (failedTasks.length > 0) {
+        const failedIds = failedTasks.map(f => f.taskId).join(', ');
+        console.warn(`Failed to update tasks: ${failedIds}`);
+        
+        // If all tasks failed, throw an error
+        if (successfulTasks.length === 0) {
+          throw new Error(`Failed to update all selected tasks`);
+        }
+        
+        // If only some failed, we'll return the successful ones
+        // The calling code can handle partial success
+        console.info(`Successfully updated ${successfulTasks.length} out of ${taskIds.length} tasks`);
+      }
+      
+      return successfulTasks;
     } catch (error) {
       throw this.handleError(error as AxiosError);
     }

@@ -1,3 +1,5 @@
+import { TASK_STATUS, TASK_PRIORITY, USER_ROLE, VALIDATION_MESSAGES } from '../constants/taskConstants';
+
 export interface ValidationResult {
   isValid: boolean;
   errors: string[];
@@ -15,15 +17,17 @@ class ValidationService {
     
     if (!username || username.trim() === '') {
       if (isRequired) {
-        errors.push('Username is required');
+        errors.push('Username is required - please enter a username');
       }
     } else {
       const trimmed = username.trim();
-      if (trimmed.length < 3 || trimmed.length > 50) {
-        errors.push('Username must be between 3 and 50 characters');
+      if (trimmed.length < 3) {
+        errors.push(`Username is too short (${trimmed.length}/3 minimum characters)`);
+      } else if (trimmed.length > 50) {
+        errors.push(`Username is too long (${trimmed.length}/50 maximum characters)`);
       }
       if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-        errors.push('Username can only contain letters, numbers, and underscores');
+        errors.push('Username contains invalid characters - only letters, numbers, and underscores are allowed');
       }
     }
     
@@ -35,16 +39,16 @@ class ValidationService {
     
     if (!email || email.trim() === '') {
       if (isRequired) {
-        errors.push('Email is required');
+        errors.push('Email address is required - please enter your email');
       }
     } else {
       const trimmed = email.trim();
       if (trimmed.length > 100) {
-        errors.push('Email must not exceed 100 characters');
+        errors.push(`Email is too long (${trimmed.length}/100 maximum characters)`);
       }
       // Enhanced email regex for better validation
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-        errors.push('Email should be valid');
+        errors.push('Email format is invalid - please use format: user@domain.com');
       }
     }
     
@@ -56,14 +60,20 @@ class ValidationService {
     
     if (!password || password.trim() === '') {
       if (isRequired) {
-        errors.push('Password is required');
+        errors.push('Password is required - please enter a password');
       }
     } else {
-      if (password.length < 6 || password.length > 100) {
-        errors.push('Password must be between 6 and 100 characters');
+      if (password.length < 6) {
+        errors.push(`Password is too short (${password.length}/6 minimum characters)`);
+      } else if (password.length > 100) {
+        errors.push(`Password is too long (${password.length}/100 maximum characters)`);
       }
       if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/.test(password)) {
-        errors.push('Password must contain at least one lowercase letter, one uppercase letter, and one digit');
+        const missing = [];
+        if (!/[a-z]/.test(password)) missing.push('lowercase letter');
+        if (!/[A-Z]/.test(password)) missing.push('uppercase letter');
+        if (!/\d/.test(password)) missing.push('number');
+        errors.push(`Password must contain at least one ${missing.join(', ')}`);
       }
     }
     
@@ -78,8 +88,8 @@ class ValidationService {
         errors.push('Role is required');
       }
     } else {
-      if (!/^(USER|ADMIN)$/.test(role)) {
-        errors.push('Role must be either USER or ADMIN');
+      if (!Object.values(USER_ROLE).includes(role as any)) {
+        errors.push(VALIDATION_MESSAGES.USER_ROLE);
       }
     }
     
@@ -104,11 +114,11 @@ class ValidationService {
     const errors: string[] = [];
     
     if (!title || title.trim() === '') {
-      errors.push('Task title is required');
+      errors.push('Task title is required - please enter a descriptive title');
     } else {
       const trimmed = title.trim();
-      if (trimmed.length < 1 || trimmed.length > 255) {
-        errors.push('Title must be between 1 and 255 characters');
+      if (trimmed.length > 255) {
+        errors.push(`Task title is too long (${trimmed.length}/255 maximum characters)`);
       }
     }
     
@@ -119,7 +129,7 @@ class ValidationService {
     const errors: string[] = [];
     
     if (description && description.length > 2000) {
-      errors.push('Description must not exceed 2000 characters');
+      errors.push(`Description is too long (${description.length}/2000 maximum characters)`);
     }
     
     return { isValid: errors.length === 0, errors };
@@ -133,8 +143,11 @@ class ValidationService {
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Reset time to compare dates only
       
-      if (date < today) {
-        errors.push('Due date must be in the future');
+      if (isNaN(date.getTime())) {
+        errors.push('Due date format is invalid - please enter a valid date');
+      } else if (date < today) {
+        const formattedDate = date.toLocaleDateString();
+        errors.push(`Due date cannot be in the past (selected: ${formattedDate})`);
       }
     }
     
@@ -144,8 +157,8 @@ class ValidationService {
   validateTaskStatus(status: string): ValidationResult {
     const errors: string[] = [];
     
-    if (status && !/^(TODO|IN_PROGRESS|COMPLETED)$/.test(status)) {
-      errors.push('Status must be TODO, IN_PROGRESS, or COMPLETED');
+    if (status && !Object.values(TASK_STATUS).includes(status as any)) {
+      errors.push(VALIDATION_MESSAGES.TASK_STATUS);
     }
     
     return { isValid: errors.length === 0, errors };
@@ -164,8 +177,8 @@ class ValidationService {
   validateTaskPriority(priority: string): ValidationResult {
     const errors: string[] = [];
     
-    if (priority && !/^(LOW|MEDIUM|HIGH)$/.test(priority)) {
-      errors.push('Priority must be LOW, MEDIUM, or HIGH');
+    if (priority && !Object.values(TASK_PRIORITY).includes(priority as any)) {
+      errors.push(VALIDATION_MESSAGES.TASK_PRIORITY);
     }
     
     return { isValid: errors.length === 0, errors };
@@ -379,6 +392,43 @@ class ValidationService {
     return allErrors.join('; ');
   }
 
+  // Enhanced method to format validation errors with field context
+  formatValidationErrorsWithContext(validationResult: FieldValidationResult): string {
+    const errorsByField: string[] = [];
+    
+    Object.entries(validationResult).forEach(([fieldName, errors]) => {
+      if (errors && errors.length > 0) {
+        const fieldDisplayName = this.getFieldDisplayName(fieldName);
+        const fieldErrors = errors.map(error => `${fieldDisplayName}: ${error}`);
+        errorsByField.push(...fieldErrors);
+      }
+    });
+    
+    return errorsByField.join('; ');
+  }
+
+  // Helper method to get user-friendly field names
+  private getFieldDisplayName(fieldName: string): string {
+    const fieldDisplayNames: { [key: string]: string } = {
+      'username': 'Username',
+      'email': 'Email',
+      'password': 'Password',
+      'role': 'Role',
+      'firstName': 'First Name',
+      'lastName': 'Last Name',
+      'title': 'Task Title',
+      'description': 'Description',
+      'dueDate': 'Due Date',
+      'status': 'Status',
+      'category': 'Category',
+      'priority': 'Priority',
+      'tags': 'Tags',
+      'assignedUsers': 'Assigned Users'
+    };
+    
+    return fieldDisplayNames[fieldName] || fieldName;
+  }
+
   // Real-time validation helper for form fields
   validateField(fieldName: string, value: any, context: 'login' | 'register' | 'userUpdate' | 'task' = 'register'): string[] {
     switch (fieldName) {
@@ -414,6 +464,52 @@ class ValidationService {
       default:
         return [];
     }
+  }
+
+  // Method to get a user-friendly validation summary
+  getValidationSummary(validationResult: FieldValidationResult): string {
+    const errorCount = this.getAllErrors(validationResult).length;
+    const fieldCount = Object.keys(validationResult).length;
+    
+    if (errorCount === 0) {
+      return 'All fields are valid';
+    } else if (fieldCount === 1) {
+      const fieldName = Object.keys(validationResult)[0];
+      const fieldDisplayName = this.getFieldDisplayName(fieldName);
+      return `${fieldDisplayName} has ${errorCount} error${errorCount > 1 ? 's' : ''}`;
+    } else {
+      return `${fieldCount} field${fieldCount > 1 ? 's' : ''} have validation errors (${errorCount} total)`;
+    }
+  }
+
+  // Method to provide helpful suggestions for fixing validation errors
+  getValidationSuggestions(fieldName: string, errors: string[]): string[] {
+    const suggestions: string[] = [];
+    
+    errors.forEach(error => {
+      if (error.includes('too short')) {
+        suggestions.push('Try entering more characters');
+      } else if (error.includes('too long')) {
+        suggestions.push('Try shortening your text');
+      } else if (error.includes('invalid characters')) {
+        suggestions.push('Remove special characters and spaces');
+      } else if (error.includes('Email format is invalid')) {
+        suggestions.push('Use format: yourname@example.com');
+      } else if (error.includes('lowercase letter')) {
+        suggestions.push('Add a lowercase letter (a-z)');
+      } else if (error.includes('uppercase letter')) {
+        suggestions.push('Add an uppercase letter (A-Z)');
+      } else if (error.includes('number')) {
+        suggestions.push('Add a number (0-9)');
+      } else if (error.includes('past')) {
+        suggestions.push('Choose today\'s date or a future date');
+      } else if (error.includes('required')) {
+        suggestions.push(`Please fill in the ${this.getFieldDisplayName(fieldName).toLowerCase()} field`);
+      }
+    });
+    
+    // Remove duplicates
+    return Array.from(new Set(suggestions));
   }
 }
 
