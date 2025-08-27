@@ -19,6 +19,53 @@ export interface Task {
   userId?: number;
 }
 
+// NEW: API Response Models (matching backend)
+export interface TaskResponse {
+  id: number;
+  title: string;
+  description: string;
+  dueDate: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  createDate: string;
+  updateDate: string;
+  deleted: boolean;
+  completionDate: string | null;
+  category: string;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  owner: UserDTO;
+  collaborators: UserDTO[];
+}
+
+export interface UserDTO {
+  id: number;
+  username: string;
+  email: string;
+  role: 'ADMIN' | 'USER';
+  isActive: boolean;
+}
+
+export interface CreateTaskRequest {
+  title: string;
+  description?: string;
+  dueDate?: string;
+  status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  category?: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  collaboratorUserIds?: number[];
+  collaboratorUsernames?: string[];
+}
+
+export interface UpdateTaskRequest {
+  id: number;
+  title: string;
+  description?: string;
+  dueDate?: string;
+  status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  category?: string;
+  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  collaboratorUserIds?: number[];
+}
+
 export interface User {
   id?: number;
   username: string;
@@ -226,34 +273,40 @@ class ApiService {
 
   // ==================== TASK MANAGEMENT METHODS ====================
 
-  async getTasks(keyword?: string): Promise<Task[]> {
+  async getTasks(keyword?: string): Promise<TaskResponse[]> {
     try {
       let url = this.tasksUrl;
       if (keyword) {
         url += `?keyword=${encodeURIComponent(keyword)}`;
       }
 
-      const response: AxiosResponse<Task[]> = await axios.get(url);
+      console.log('🔄 API: Fetching tasks from:', url);
+      const response: AxiosResponse<TaskResponse[]> = await axios.get(url);
+      console.log('✅ API: Tasks response:', response.data);
       return response.data;
     } catch (error) {
+      console.error('❌ API: Error fetching tasks:', error);
       throw this.handleError(error as AxiosError);
     }
   }
 
-  async getTask(id: number): Promise<Task> {
+  async getTask(id: number): Promise<TaskResponse> {
     try {
-      const url = `${this.tasksUrl}/get`;
-      const requestBody: TaskRequest = { id };
+      const url = `${this.tasksUrl}/${id}`;
+      console.log('🔄 API: Fetching single task from:', url);
 
-      const response: AxiosResponse<Task> = await axios.post(url, requestBody);
+      const response: AxiosResponse<TaskResponse> = await axios.get(url);
+      console.log('✅ API: Single task response:', response.data);
       return response.data;
     } catch (error) {
+      console.error('❌ API: Error fetching single task:', error);
       throw this.handleError(error as AxiosError);
     }
   }
 
   async createTask(task: Omit<Task, 'id'>): Promise<Task> {
     try {
+      console.log('⚠️ DEPRECATED: Using basic createTask - consider using createTaskWithCollaborators');
       const response: AxiosResponse<Task> = await axios.post(this.tasksUrl, task);
       return response.data;
     } catch (error) {
@@ -261,8 +314,24 @@ class ApiService {
     }
   }
 
+  async createTaskWithCollaborators(taskRequest: CreateTaskRequest): Promise<TaskResponse> {
+    try {
+      const url = `${this.tasksUrl}/with-collaborators`;
+      console.log('🔄 API: Creating task with collaborators at:', url);
+      console.log('📝 API: Task request data:', taskRequest);
+
+      const response: AxiosResponse<TaskResponse> = await axios.post(url, taskRequest);
+      console.log('✅ API: Task created successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ API: Error creating task with collaborators:', error);
+      throw this.handleError(error as AxiosError);
+    }
+  }
+
   async updateTask(task: Task): Promise<Task> {
     try {
+      console.log('⚠️ DEPRECATED: Using basic updateTask - consider using updateTaskWithCollaborators');
       const url = `${this.tasksUrl}/update`;
       const response: AxiosResponse<Task> = await axios.post(url, task);
       return response.data;
@@ -271,14 +340,121 @@ class ApiService {
     }
   }
 
-  async deleteTask(id: number): Promise<void> {
+  async updateTaskWithCollaborators(taskRequest: UpdateTaskRequest): Promise<TaskResponse> {
     try {
-      const url = `${this.tasksUrl}/delete`;
-      const requestBody: TaskRequest = { id };
-      await axios.post(url, requestBody);
+      const url = `${this.tasksUrl}/update-with-collaborators`;
+      console.log('🔄 API: Updating task with collaborators at:', url);
+      console.log('📝 API: Update request data:', taskRequest);
+
+      const response: AxiosResponse<TaskResponse> = await axios.post(url, taskRequest);
+      console.log('✅ API: Task updated successfully:', response.data);
+      return response.data;
     } catch (error) {
+      console.error('❌ API: Error updating task with collaborators:', error);
       throw this.handleError(error as AxiosError);
     }
+  }
+
+  async deleteTask(id: number): Promise<void> {
+    try {
+      const url = `${this.tasksUrl}/${id}`;
+      console.log('🔄 API: Deleting task:', url);
+      await axios.delete(url);
+      console.log('✅ API: Task deleted successfully');
+    } catch (error) {
+      console.error('❌ API: Error deleting task:', error);
+      throw this.handleError(error as AxiosError);
+    }
+  }
+
+  // ==================== CONVERSION UTILITIES ====================
+
+  // Convert TaskResponse to Task for backward compatibility
+  private convertTaskResponseToTask(taskResponse: TaskResponse): Task {
+    return {
+      id: taskResponse.id,
+      title: taskResponse.title,
+      description: taskResponse.description,
+      status: taskResponse.status,
+      priority: taskResponse.priority,
+      category: taskResponse.category,
+      dueDate: taskResponse.dueDate,
+      completionDate: taskResponse.completionDate || undefined,
+      createdAt: taskResponse.createDate,
+      updatedAt: taskResponse.updateDate,
+      assignedTo: this.convertUserDTOToUser(taskResponse.owner),
+      collaborators: taskResponse.collaborators.map(c => this.convertUserDTOToUser(c)),
+      userId: taskResponse.owner.id
+    };
+  }
+
+  // Convert User to UserDTO
+  private convertUserToUserDTO(user: User): UserDTO {
+    return {
+      id: user.id!,
+      username: user.username,
+      email: user.email || '',
+      role: user.role || 'USER',
+      isActive: user.isActive !== false
+    };
+  }
+
+  // Convert UserDTO to User
+  private convertUserDTOToUser(userDTO: UserDTO): User {
+    return {
+      id: userDTO.id,
+      username: userDTO.username,
+      email: userDTO.email,
+      role: userDTO.role,
+      isActive: userDTO.isActive
+    };
+  }
+
+  // Convert Task to CreateTaskRequest
+  private convertTaskToCreateRequest(task: Omit<Task, 'id'>, collaboratorIds?: number[]): CreateTaskRequest {
+    const formatToLocalDate = (d?: Date | string): string | undefined => {
+      if (!d) return undefined;
+      const dateObj = typeof d === 'string' ? new Date(d) : d;
+      if (isNaN(dateObj.getTime())) return undefined;
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    return {
+      title: task.title,
+      description: task.description,
+      dueDate: formatToLocalDate(task.dueDate),
+      status: task.status,
+      category: task.category,
+      priority: task.priority,
+      collaboratorUserIds: collaboratorIds
+    };
+  }
+
+  // Convert Task to UpdateTaskRequest  
+  private convertTaskToUpdateRequest(task: Task, collaboratorIds?: number[]): UpdateTaskRequest {
+    const formatToLocalDate = (d?: Date | string): string | undefined => {
+      if (!d) return undefined;
+      const dateObj = typeof d === 'string' ? new Date(d) : d;
+      if (isNaN(dateObj.getTime())) return undefined;
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    return {
+      id: task.id!,
+      title: task.title,
+      description: task.description,
+      dueDate: formatToLocalDate(task.dueDate),
+      status: task.status,
+      category: task.category,
+      priority: task.priority,
+      collaboratorUserIds: collaboratorIds
+    };
   }
 
   async getTasksWithFilters(filters: TaskFilter): Promise<Task[]> {
@@ -348,7 +524,9 @@ class ApiService {
       // Create individual update promises with error handling
       for (const taskId of taskIds) {
         const updatePromise = this.getTask(taskId)
-          .then(async (currentTask: Task) => {
+          .then(async (currentTaskResponse: TaskResponse) => {
+            // Convert TaskResponse to Task for compatibility
+            const currentTask = this.convertTaskResponseToTask(currentTaskResponse);
             const updatedTask: Task = {
               ...currentTask,
               ...updates,
@@ -662,8 +840,9 @@ class ApiService {
 
   async updateTaskStatus(id: number, status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'): Promise<Task> {
     try {
-      const task = await this.getTask(id);
-      const updatedTask = { ...task, status };
+      const taskResponse = await this.getTask(id);
+      const currentTask = this.convertTaskResponseToTask(taskResponse);
+      const updatedTask = { ...currentTask, status };
       return await this.updateTask(updatedTask);
     } catch (error) {
       throw this.handleError(error as AxiosError);

@@ -47,7 +47,7 @@ const App = (): React.ReactElement => {
   });
   
   // Categories and users
-  const [categories, setCategories] = useState<string[]>(['Work', 'Personal', 'Shopping', 'Health', 'Education']);
+  const [categories] = useState<string[]>(['Work', 'Personal', 'Shopping', 'Health', 'Education']);
   const [users, setUsers] = useState<User[]>([]);
   // const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [availableActiveUsers, setAvailableActiveUsers] = useState<User[]>([]);
@@ -220,11 +220,43 @@ const App = (): React.ReactElement => {
   const loadTasks = async () => {
     setLoading(true);
     try {
-      const tasks = await apiService.getTasks();
-      setTasks(tasks);
-      applyFilters(tasks);
+      console.log('🔄 Loading tasks with collaborators...');
+      const taskResponses = await apiService.getTasks();
+      console.log('✅ Tasks loaded:', taskResponses);
+      
+      // Convert TaskResponse[] to Task[] for frontend compatibility
+      const convertedTasks: Task[] = taskResponses.map(taskResponse => ({
+        id: taskResponse.id,
+        title: taskResponse.title,
+        description: taskResponse.description,
+        status: taskResponse.status,
+        priority: taskResponse.priority,
+        category: taskResponse.category,
+        dueDate: taskResponse.dueDate,
+        completionDate: taskResponse.completionDate || undefined,
+        createdAt: taskResponse.createDate,
+        updatedAt: taskResponse.updateDate,
+        assignedTo: {
+          id: taskResponse.owner.id,
+          username: taskResponse.owner.username,
+          email: taskResponse.owner.email,
+          role: taskResponse.owner.role,
+          isActive: taskResponse.owner.isActive
+        },
+        collaborators: taskResponse.collaborators.map(c => ({
+          id: c.id,
+          username: c.username,
+          email: c.email,
+          role: c.role,
+          isActive: c.isActive
+        })),
+        userId: taskResponse.owner.id
+      }));
+      
+      setTasks(convertedTasks);
+      applyFilters(convertedTasks);
     } catch (error: any) {
-      console.error('Error loading tasks:', error);
+      console.error('❌ Error loading tasks:', error);
       if (error.response?.status === 500 && error.response?.data?.includes('LazyInitializationException')) {
         showError('Backend database session issue. Please contact administrator or try refreshing.');
       } else {
@@ -262,11 +294,19 @@ const App = (): React.ReactElement => {
 
   const loadUsersForAssignment = async () => {
     try {
+      console.log('🔄 Loading users for assignment...');
       const users = await apiService.getUsersForAssignment();
-      console.log('Users for assignment loaded successfully:', users);
+      console.log('✅ Users for assignment loaded successfully:', users);
+      console.log('📊 Number of users loaded:', users.length);
       setAvailableActiveUsers(users);
+      
+      // Additional debug info
+      if (users.length === 0) {
+        console.warn('⚠️ No users returned from API. Check backend and user data.');
+      }
     } catch (error: any) {
-      console.error('Error loading assignable users:', error);
+      console.error('❌ Error loading assignable users:', error);
+      console.error('🔍 Error details:', error.response?.data || error.message);
       showError('Failed to load assignable users: ' + (error.message || 'Unknown error'));
     }
   };
@@ -490,16 +530,62 @@ const App = (): React.ReactElement => {
       setNewTask({...newTask, tags: (newTask.tags as string).split(',').map(tag => tag.trim()).filter(tag => tag)});
     }
 
+    // Helper to format Date or ISO string to YYYY-MM-DD for LocalDate
+    const formatToLocalDate = (d?: Date | string): string | undefined => {
+      if (!d) return undefined;
+      const dateObj = typeof d === 'string' ? new Date(d) : d;
+      if (isNaN(dateObj.getTime())) return undefined;
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
     const taskData = {
-      ...newTask,
-      status: newTask.status || 'PENDING',
-      priority: newTask.priority || 'MEDIUM',
-      collaborators: selectedContributors
+      title: newTask.title || '',
+      description: newTask.description || '',
+      dueDate: formatToLocalDate(newTask.dueDate),
+      status: (newTask.status || 'PENDING') as 'PENDING' | 'IN_PROGRESS' | 'COMPLETED',
+      priority: (newTask.priority || 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH',
+      category: newTask.category || '',
+      collaboratorUserIds: selectedContributors.map(user => user.id!).filter(id => id !== undefined)
     };
 
     try {
       if (editingTask) {
-        const updatedTask = await apiService.updateTask({ ...taskData, id: editingTask.id } as Task);
+        console.log('🔄 Updating task with collaborators:', taskData);
+    const updateRequest = { ...taskData, id: editingTask.id! };
+        const updatedTaskResponse = await apiService.updateTaskWithCollaborators(updateRequest);
+        
+        // Convert TaskResponse back to Task for state management
+        const updatedTask: Task = {
+          id: updatedTaskResponse.id,
+          title: updatedTaskResponse.title,
+          description: updatedTaskResponse.description,
+          status: updatedTaskResponse.status,
+          priority: updatedTaskResponse.priority,
+          category: updatedTaskResponse.category,
+          dueDate: updatedTaskResponse.dueDate,
+          completionDate: updatedTaskResponse.completionDate || undefined,
+          createdAt: updatedTaskResponse.createDate,
+          updatedAt: updatedTaskResponse.updateDate,
+          assignedTo: {
+            id: updatedTaskResponse.owner.id,
+            username: updatedTaskResponse.owner.username,
+            email: updatedTaskResponse.owner.email,
+            role: updatedTaskResponse.owner.role,
+            isActive: updatedTaskResponse.owner.isActive
+          },
+          collaborators: updatedTaskResponse.collaborators.map(c => ({
+            id: c.id,
+            username: c.username,
+            email: c.email,
+            role: c.role,
+            isActive: c.isActive
+          })),
+          userId: updatedTaskResponse.owner.id
+        };
+        
         const index = tasks.findIndex(t => t.id === updatedTask.id);
         if (index !== -1) {
           const newTasks = [...tasks];
@@ -508,19 +594,50 @@ const App = (): React.ReactElement => {
           applyFilters(newTasks);
         }
         closeTaskModal();
-        showSuccess('Task updated successfully');
+        showSuccess('Task updated successfully with collaborators');
         
         // Refresh dashboard stats if on dashboard view
         if (currentView === 'dashboard') {
           calculateDashboardStatsFromTasks();
         }
       } else {
-        const task = await apiService.createTask(taskData as Task);
-        const newTasks = [task, ...tasks];
+        console.log('🔄 Creating task with collaborators:', taskData);
+        const createdTaskResponse = await apiService.createTaskWithCollaborators(taskData);
+        
+        // Convert TaskResponse back to Task for state management
+        const createdTask: Task = {
+          id: createdTaskResponse.id,
+          title: createdTaskResponse.title,
+          description: createdTaskResponse.description,
+          status: createdTaskResponse.status,
+          priority: createdTaskResponse.priority,
+          category: createdTaskResponse.category,
+          dueDate: createdTaskResponse.dueDate,
+          completionDate: createdTaskResponse.completionDate || undefined,
+          createdAt: createdTaskResponse.createDate,
+          updatedAt: createdTaskResponse.updateDate,
+          assignedTo: {
+            id: createdTaskResponse.owner.id,
+            username: createdTaskResponse.owner.username,
+            email: createdTaskResponse.owner.email,
+            role: createdTaskResponse.owner.role,
+            isActive: createdTaskResponse.owner.isActive
+          },
+          collaborators: createdTaskResponse.collaborators.map(c => ({
+            id: c.id,
+            username: c.username,
+            email: c.email,
+            role: c.role,
+            isActive: c.isActive
+          })),
+          userId: createdTaskResponse.owner.id
+        };
+        
+        const newTasks = [createdTask, ...tasks];
         setTasks(newTasks);
         applyFilters(newTasks);
         closeTaskModal();
-        showSuccess('Task created successfully');
+        showSuccess('Task created successfully with collaborators');
         
         // Refresh dashboard stats if on dashboard view
         if (currentView === 'dashboard') {
@@ -528,6 +645,7 @@ const App = (): React.ReactElement => {
         }
       }
     } catch (error: any) {
+      console.error('❌ Error saving task:', error);
       showError(editingTask ? 'Failed to update task' : 'Failed to create task');
     } finally {
       setLoading(false);
@@ -601,9 +719,19 @@ const App = (): React.ReactElement => {
       return;
     }
 
+    const formatToLocalDate = (d?: Date | string): string | undefined => {
+      if (!d) return undefined;
+      const dateObj = typeof d === 'string' ? new Date(d) : d;
+      if (isNaN(dateObj.getTime())) return undefined;
+      const yyyy = dateObj.getFullYear();
+      const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const dd = String(dateObj.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
     const updates: Partial<Task> = { status };
     if (status === 'COMPLETED') {
-      updates.completionDate = new Date().toISOString();
+      updates.completionDate = formatToLocalDate(new Date());
     }
 
     try {
@@ -613,16 +741,9 @@ const App = (): React.ReactElement => {
       // Use the modified bulkUpdateTasks that handles individual requests internally
       const updatedTasks = await apiService.bulkUpdateTasks(selectedTasks, updates);
       
-      // Update the tasks in state
-      updatedTasks.forEach(updatedTask => {
-        const index = tasks.findIndex((t: Task) => t.id === updatedTask.id);
-        if (index !== -1) {
-          const newTasks = [...tasks];
-          newTasks[index] = updatedTask;
-          setTasks(newTasks);
-        }
-      });
-      applyFilters();
+  // Refresh tasks from backend to get canonical data
+  await loadTasks();
+  applyFilters();
       clearSelection();
       
       // Show appropriate message based on success rate
@@ -818,6 +939,11 @@ const App = (): React.ReactElement => {
   // ==================== CONTRIBUTOR MANAGEMENT METHODS ====================
 
   const addContributor = () => {
+    console.log('🎯 addContributor called');
+    console.log('📋 selectedContributorId:', selectedContributorId);
+    console.log('👥 availableActiveUsers:', availableActiveUsers);
+    console.log('✅ selectedContributors:', selectedContributors);
+    
     if (!selectedContributorId) {
       showError('Please select a contributor to add');
       return;
@@ -836,8 +962,8 @@ const App = (): React.ReactElement => {
     
     if (!user) {
       showError('Selected user not found in available users');
-      console.error('Available users:', availableActiveUsers);
-      console.error('Looking for user ID:', userId);
+      console.error('❌ Available users:', availableActiveUsers);
+      console.error('🔍 Looking for user ID:', userId);
       return;
     }
     
@@ -849,8 +975,8 @@ const App = (): React.ReactElement => {
     setSelectedContributors([...selectedContributors, user]);
     setSelectedContributorId('');
     showSuccess(`${user.username} added as contributor`);
-    console.log('Added contributor:', user.username);
-    console.log('Current contributors:', [...selectedContributors, user]);
+    console.log('✅ Added contributor:', user.username);
+    console.log('📝 Current contributors:', [...selectedContributors, user]);
   };
 
   const removeContributor = (index: number) => {
@@ -1542,10 +1668,10 @@ const App = (): React.ReactElement => {
                   <div className="form-group">
                     <label htmlFor="taskDueDate">Due Date:</label>
                     <input
-                      type="datetime-local"
+                      type="date"
                       id="taskDueDate"
-                      value={newTask.dueDate ? new Date(newTask.dueDate).toISOString().slice(0, 16) : ''}
-                      onChange={(e) => setNewTask({...newTask, dueDate: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                      value={newTask.dueDate ? (typeof newTask.dueDate === 'string' ? newTask.dueDate.slice(0,10) : new Date(newTask.dueDate).toISOString().slice(0,10)) : ''}
+                      onChange={(e) => setNewTask({...newTask, dueDate: e.target.value ? e.target.value : undefined})}
                       className="form-control"
                     />
                   </div>
@@ -1571,11 +1697,22 @@ const App = (): React.ReactElement => {
                 <div className="form-group">
                   <label>Contributors:</label>
                   {/* Debug info */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="debug-info" style={{fontSize: '0.8em', color: '#666', marginBottom: '5px'}}>
-                      Available users: {availableActiveUsers.length} | Selected: {selectedContributors.length}
-                    </div>
-                  )}
+                  <div className="debug-info" style={{
+                    fontSize: '0.9em', 
+                    color: '#0066cc', 
+                    marginBottom: '10px',
+                    padding: '8px',
+                    background: '#f0f8ff',
+                    border: '1px solid #0066cc',
+                    borderRadius: '4px'
+                  }}>
+                    <strong>DEBUG:</strong> Available users: {availableActiveUsers.length} | Selected: {selectedContributors.length}
+                    {availableActiveUsers.length === 0 && (
+                      <div style={{color: '#cc0000', marginTop: '5px'}}>
+                        ⚠️ No users loaded! Check console for API errors.
+                      </div>
+                    )}
+                  </div>
                   <div className="contributors-section">
                     <div className="add-contributor">
                       <select
