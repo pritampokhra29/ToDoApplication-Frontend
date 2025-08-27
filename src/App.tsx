@@ -262,10 +262,12 @@ const App = (): React.ReactElement => {
 
   const loadUsersForAssignment = async () => {
     try {
-      await apiService.getUsersForAssignment();
-      // setAvailableUsers(users);
+      const users = await apiService.getUsersForAssignment();
+      console.log('Users for assignment loaded successfully:', users);
+      setAvailableActiveUsers(users);
     } catch (error: any) {
       console.error('Error loading assignable users:', error);
+      showError('Failed to load assignable users: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -274,6 +276,7 @@ const App = (): React.ReactElement => {
     try {
       const users = await apiService.getActiveUsers();
       console.log('Active users loaded successfully:', users);
+      console.log('Number of active users:', users.length);
       setAvailableActiveUsers(users);
     } catch (error: any) {
       console.error('Error loading active users:', error);
@@ -815,21 +818,39 @@ const App = (): React.ReactElement => {
   // ==================== CONTRIBUTOR MANAGEMENT METHODS ====================
 
   const addContributor = () => {
-    if (!selectedContributorId) return;
+    if (!selectedContributorId) {
+      showError('Please select a contributor to add');
+      return;
+    }
     
     const userId = typeof selectedContributorId === 'string' ? 
                    parseInt(selectedContributorId) : 
                    selectedContributorId;
     
-    const user = availableActiveUsers.find((u: User) => u.id === userId);
-    
-    if (user && !isUserAlreadySelected(userId)) {
-      setSelectedContributors([...selectedContributors, user]);
-      console.log('Added contributor:', user.username);
-      console.log('Current contributors:', [...selectedContributors, user]);
+    if (isNaN(userId)) {
+      showError('Invalid contributor selection');
+      return;
     }
     
+    const user = availableActiveUsers.find((u: User) => u.id === userId);
+    
+    if (!user) {
+      showError('Selected user not found in available users');
+      console.error('Available users:', availableActiveUsers);
+      console.error('Looking for user ID:', userId);
+      return;
+    }
+    
+    if (isUserAlreadySelected(userId)) {
+      showError(`${user.username} is already a contributor`);
+      return;
+    }
+    
+    setSelectedContributors([...selectedContributors, user]);
     setSelectedContributorId('');
+    showSuccess(`${user.username} added as contributor`);
+    console.log('Added contributor:', user.username);
+    console.log('Current contributors:', [...selectedContributors, user]);
   };
 
   const removeContributor = (index: number) => {
@@ -837,8 +858,11 @@ const App = (): React.ReactElement => {
       const newContributors = [...selectedContributors];
       const removedUser = newContributors.splice(index, 1)[0];
       setSelectedContributors(newContributors);
+      showSuccess(`${removedUser.username} removed from contributors`);
       console.log('Removed contributor:', removedUser.username);
       console.log('Current contributors:', newContributors);
+    } else {
+      showError('Invalid contributor selection for removal');
     }
   };
 
@@ -1546,6 +1570,12 @@ const App = (): React.ReactElement => {
                 {/* Contributors Section */}
                 <div className="form-group">
                   <label>Contributors:</label>
+                  {/* Debug info */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="debug-info" style={{fontSize: '0.8em', color: '#666', marginBottom: '5px'}}>
+                      Available users: {availableActiveUsers.length} | Selected: {selectedContributors.length}
+                    </div>
+                  )}
                   <div className="contributors-section">
                     <div className="add-contributor">
                       <select
@@ -1557,7 +1587,9 @@ const App = (): React.ReactElement => {
                         {availableActiveUsers
                           .filter(user => !isUserAlreadySelected(user.id!))
                           .map(user => (
-                            <option key={user.id} value={user.id}>{user.username}</option>
+                            <option key={user.id} value={user.id}>
+                              {user.username} {user.email ? `(${user.email})` : ''}
+                            </option>
                           ))}
                       </select>
                       <button type="button" className="btn btn-sm" onClick={addContributor}>
@@ -1566,14 +1598,20 @@ const App = (): React.ReactElement => {
                     </div>
                     
                     <div className="selected-contributors">
-                      {selectedContributors.map((contributor, index) => (
-                        <div key={contributor.id} className="contributor-item">
-                          <span>{contributor.username}</span>
-                          <button type="button" className="btn-remove" onClick={() => removeContributor(index)}>
-                            ×
-                          </button>
+                      {selectedContributors.length === 0 ? (
+                        <div className="no-contributors" style={{color: '#999', fontStyle: 'italic'}}>
+                          No contributors added yet
                         </div>
-                      ))}
+                      ) : (
+                        selectedContributors.map((contributor, index) => (
+                          <div key={contributor.id} className="contributor-item">
+                            <span>{contributor.username} {contributor.email ? `(${contributor.email})` : ''}</span>
+                            <button type="button" className="btn-remove" onClick={() => removeContributor(index)}>
+                              ×
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>

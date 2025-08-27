@@ -1330,22 +1330,54 @@ textarea.form-control {
   border-radius: 6px;
   padding: 1rem;
   background: #f8f9fa;
+  margin-top: 0.5rem;
 }
 
 .add-contributor {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  align-items: center;
 }
 
 .add-contributor select {
   flex: 1;
+  min-height: 38px;
+}
+
+.add-contributor button {
+  min-width: 60px;
+  height: 38px;
 }
 
 .selected-contributors {
+  min-height: 40px;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  border: 1px dashed #ddd;
+  border-radius: 4px;
+  padding: 0.5rem;
+  background: white;
+}
+
+.no-contributors {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  color: #999;
+  font-style: italic;
+}
+
+.debug-info {
+  font-size: 0.8em;
+  color: #666;
+  margin-bottom: 5px;
+  padding: 2px 6px;
+  background: #fff3cd;
+  border-radius: 3px;
+  display: inline-block;
 }
 
 .contributor-item {
