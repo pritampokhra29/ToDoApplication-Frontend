@@ -483,7 +483,8 @@ export class AppComponent implements OnInit {
       dueDate: this.newTask.dueDate,
       status: this.newTask.status || 'PENDING',
       category: this.newTask.category || '',
-      priority: this.newTask.priority || 'MEDIUM'
+      priority: this.newTask.priority || 'MEDIUM',
+      collaborators: this.selectedContributors
     });
     
     if (this.validationService.hasValidationErrors(this.taskValidationErrors)) {
@@ -936,12 +937,24 @@ export class AppComponent implements OnInit {
                    parseInt(this.selectedContributorId) : 
                    this.selectedContributorId;
     
+    // Prevent adding current user as collaborator
+    if (this.currentUser && userId === this.currentUser.id) {
+      this.showError('You cannot add yourself as a collaborator');
+      this.selectedContributorId = '';
+      return;
+    }
+    
     const user = this.availableActiveUsers.find(u => u.id === userId);
     
     if (user && !this.isUserAlreadySelected(userId)) {
       this.selectedContributors.push(user);
       console.log('Added contributor:', user.username);
       console.log('Current contributors:', this.selectedContributors);
+      
+      // Validate contributors after adding
+      this.validateFieldOnBlur('collaborators', this.selectedContributors, 'task');
+    } else if (this.isUserAlreadySelected(userId)) {
+      this.showError('This user is already added as a collaborator');
     }
     
     this.selectedContributorId = '';
@@ -952,6 +965,9 @@ export class AppComponent implements OnInit {
       const removedUser = this.selectedContributors.splice(index, 1)[0];
       console.log('Removed contributor:', removedUser.username);
       console.log('Current contributors:', this.selectedContributors);
+      
+      // Validate contributors after removing
+      this.validateFieldOnBlur('collaborators', this.selectedContributors, 'task');
     }
   }
 

@@ -49,6 +49,7 @@ I have successfully implemented comprehensive input validation for the Angular T
 - **Status**: Must be "PENDING", "IN_PROGRESS", or "COMPLETED"
 - **Category**: Max 100 characters
 - **Priority**: Must be "LOW", "MEDIUM", or "HIGH"
+- **Collaborators**: Optional, max 10 collaborators, no duplicates allowed
 
 ## Key Features
 

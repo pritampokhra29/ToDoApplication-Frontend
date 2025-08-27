@@ -199,6 +199,44 @@ export class ValidationService {
     return { isValid: errors.length === 0, errors };
   }
 
+  validateCollaborators(collaborators: any[]): ValidationResult {
+    const errors: string[] = [];
+    
+    if (collaborators && Array.isArray(collaborators)) {
+      if (collaborators.length > 10) {
+        errors.push('A task cannot have more than 10 collaborators');
+      }
+      
+      // Check for duplicate collaborators
+      const userIds = collaborators.map(c => c.id).filter(id => id !== undefined && id !== null);
+      const uniqueIds = new Set(userIds);
+      if (userIds.length !== uniqueIds.size) {
+        errors.push('Duplicate collaborators are not allowed');
+      }
+      
+      // Validate each collaborator
+      for (let i = 0; i < collaborators.length; i++) {
+        const collaborator = collaborators[i];
+        if (!collaborator || typeof collaborator !== 'object') {
+          errors.push(`Collaborator ${i + 1} is invalid`);
+          continue;
+        }
+        
+        if (!collaborator.id || typeof collaborator.id !== 'number' || collaborator.id <= 0) {
+          errors.push(`Collaborator ${i + 1} must have a valid user ID`);
+        }
+        
+        if (!collaborator.username || typeof collaborator.username !== 'string' || collaborator.username.trim() === '') {
+          errors.push(`Collaborator ${i + 1} must have a valid username`);
+        }
+      }
+    } else if (collaborators !== undefined && collaborators !== null && !Array.isArray(collaborators)) {
+      errors.push('Collaborators must be provided as a list of users');
+    }
+    
+    return { isValid: errors.length === 0, errors };
+  }
+
   // ==================== FORM VALIDATION ====================
 
   validateLoginForm(username: string, password: string): FieldValidationResult {
@@ -330,6 +368,7 @@ export class ValidationService {
     status?: string;
     category?: string;
     priority?: string;
+    collaborators?: any[];
   }): FieldValidationResult {
     const result: FieldValidationResult = {};
     
@@ -370,6 +409,13 @@ export class ValidationService {
       const priorityValidation = this.validateTaskPriority(taskData.priority);
       if (!priorityValidation.isValid) {
         result['priority'] = priorityValidation.errors;
+      }
+    }
+    
+    if (taskData.collaborators) {
+      const collaboratorsValidation = this.validateCollaborators(taskData.collaborators);
+      if (!collaboratorsValidation.isValid) {
+        result['collaborators'] = collaboratorsValidation.errors;
       }
     }
     
@@ -427,6 +473,8 @@ export class ValidationService {
         return this.validateTaskCategory(value).errors;
       case 'priority':
         return this.validateTaskPriority(value).errors;
+      case 'collaborators':
+        return this.validateCollaborators(value).errors;
       default:
         return [];
     }

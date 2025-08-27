@@ -485,16 +485,23 @@
               
               <div class="add-contributor">
                 <select 
-                  class="form-control" 
+                  class="form-control"
+                  [class.error]="hasFieldError('collaborators', 'task')"
                   [(ngModel)]="selectedContributorId" 
                   name="contributorSelect"
                   (change)="addContributor()">
                   <option value="">Select a contributor to add</option>
                   <option *ngFor="let user of availableActiveUsers" [value]="user.id" 
-                          [disabled]="isUserAlreadySelected(user.id!)">
+                          [disabled]="isUserAlreadySelected(user.id!) || (currentUser && user.id === currentUser.id)">
                     {{ user.username }}<span *ngIf="user.email"> ({{ user.email }})</span>
+                    <span *ngIf="currentUser && user.id === currentUser.id"> (You)</span>
                   </option>
                 </select>
+              </div>
+            </div>
+            <div class="validation-errors" *ngIf="hasFieldError('collaborators', 'task')">
+              <div class="error-message" *ngFor="let error of getFieldErrors('collaborators', 'task')">
+                ⚠️ {{ error }}
               </div>
             </div>
           </div>
