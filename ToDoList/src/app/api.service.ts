@@ -418,16 +418,17 @@ export class ApiService {
 
   /**
    * Get task categories
+   * TODO: Backend categories endpoint not implemented yet
    */
-  getCategories(): Observable<string[]> {
-    const url = `${this.tasksUrl}/categories`;
-    
-    return this.http.get<string[]>(url, this.getHttpOptions())
-      .pipe(
-        retry(1),
-        catchError(this.handleError)
-      );
-  }
+  // getCategories(): Observable<string[]> {
+  //   const url = `${this.tasksUrl}/categories`;
+  //   
+  //   return this.http.get<string[]>(url, this.getHttpOptions())
+  //     .pipe(
+  //       retry(1),
+  //       catchError(this.handleError)
+  //     );
+  // }
 
   // ==================== USER MANAGEMENT METHODS ====================
 
@@ -842,16 +843,17 @@ export class ApiService {
 
   /**
    * Get task analytics
+   * TODO: Backend analytics endpoint not implemented yet
    */
-  getTaskAnalytics(period: 'week' | 'month' | 'year' = 'month'): Observable<any> {
-    const url = `${this.baseUrl}/dashboard/analytics?period=${period}`;
-    
-    return this.http.get<any>(url, this.getHttpOptions())
-      .pipe(
-        retry(1),
-        catchError(this.handleError)
-      );
-  }
+  // getTaskAnalytics(period: 'week' | 'month' | 'year' = 'month'): Observable<any> {
+  //   const url = `${this.baseUrl}/dashboard/analytics?period=${period}`;
+  //   
+  //   return this.http.get<any>(url, this.getHttpOptions())
+  //     .pipe(
+  //       retry(1),
+  //       catchError(this.handleError)
+  //     );
+  // }
 
   /**
    * Update task status

@@ -18,7 +18,7 @@ export class AppComponent implements OnInit {
   isLoggedIn = false;
   isAdmin = false;
   currentUser: User | null = null;
-  loginData = { username: 'admin', password: 'admin123' };
+  loginData = { username: '', password: '' };
   
   // Navigation
   currentView: 'tasks' | 'admin' | 'dashboard' = 'tasks';
@@ -264,14 +264,18 @@ export class AppComponent implements OnInit {
   }
 
   loadCategories() {
-    this.apiService.getCategories().subscribe({
-      next: (categories) => {
-        this.categories = [...new Set([...this.categories, ...categories])];
-      },
-      error: (error) => {
-        console.error('Error loading categories:', error);
-      }
-    });
+    // TODO: Backend categories endpoint not implemented yet
+    // this.apiService.getCategories().subscribe({
+    //   next: (categories) => {
+    //     this.categories = [...new Set([...this.categories, ...categories])];
+    //   },
+    //   error: (error) => {
+    //     console.error('Error loading categories:', error);
+    //   }
+    // });
+    
+    // For now, categories will be populated from tasks as they are created/loaded
+    console.log('Categories will be extracted from existing tasks');
   }
 
   loadUsers() {
@@ -316,20 +320,25 @@ export class AppComponent implements OnInit {
   loadDashboardStats() {
     console.log('Loading dashboard stats...');
     
+    // TODO: Backend dashboard stats endpoint not implemented yet
     // First try to get stats from backend
-    this.apiService.getDashboardStats().subscribe({
-      next: (stats) => {
-        console.log('Dashboard stats loaded from backend:', stats);
-        this.dashboardStats = stats;
-      },
-      error: (error) => {
-        console.error('Error loading dashboard stats from backend:', error);
-        console.log('Calculating dashboard stats from local task data...');
-        
-        // Fallback: Calculate stats from local task data
-        this.calculateDashboardStatsFromTasks();
-      }
-    });
+    // this.apiService.getDashboardStats().subscribe({
+    //   next: (stats) => {
+    //     console.log('Dashboard stats loaded from backend:', stats);
+    //     this.dashboardStats = stats;
+    //   },
+    //   error: (error) => {
+    //     console.error('Error loading dashboard stats from backend:', error);
+    //     console.log('Calculating dashboard stats from local task data...');
+    //     
+    //     // Fallback: Calculate stats from local task data
+    //     this.calculateDashboardStatsFromTasks();
+    //   }
+    // });
+
+    // For now, calculate stats from local task data
+    console.log('Calculating dashboard stats from local task data...');
+    this.calculateDashboardStatsFromTasks();
   }
 
   calculateDashboardStatsFromTasks() {
