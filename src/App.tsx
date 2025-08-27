@@ -15,7 +15,7 @@ const App = (): React.ReactElement => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [loginData, setLoginData] = useState<LoginData>({ username: 'admin', password: 'admin123' });
+  const [loginData, setLoginData] = useState<LoginData>({ username: '', password: '' });
   
   // Navigation
   const [currentView, setCurrentView] = useState<'tasks' | 'admin' | 'dashboard'>('tasks');
@@ -115,6 +115,12 @@ const App = (): React.ReactElement => {
   };
 
   const login = async () => {
+    // Prevent duplicate login attempts
+    if (loading) {
+      console.log('Login already in progress, ignoring duplicate call');
+      return;
+    }
+
     // Validate login form
     const errors = validationService.validateLoginForm(loginData.username, loginData.password);
     
@@ -217,7 +223,12 @@ const App = (): React.ReactElement => {
       setTasks(tasks);
       applyFilters(tasks);
     } catch (error: any) {
-      showError('Failed to load tasks');
+      console.error('Error loading tasks:', error);
+      if (error.response?.status === 500 && error.response?.data?.includes('LazyInitializationException')) {
+        showError('Backend database session issue. Please contact administrator or try refreshing.');
+      } else {
+        showError('Failed to load tasks: ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setLoading(false);
     }

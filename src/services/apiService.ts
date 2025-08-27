@@ -92,6 +92,8 @@ class ApiService {
   private baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
   private tasksUrl = `${this.baseUrl}/tasks`;
   private authUrl = `${this.baseUrl}/auth`;
+  private static interceptorsSetup = false; // Prevent duplicate interceptors
+  private pendingRequests = new Map<string, Promise<any>>(); // Request deduplication
 
   constructor() {
     // Log which environment and API URL is being used
@@ -99,8 +101,11 @@ class ApiService {
     console.log('📍 Environment:', process.env.REACT_APP_ENVIRONMENT || 'development');
     console.log('🌐 API URL:', this.baseUrl);
     
-    // Set up axios interceptors for automatic token handling
-    this.setupInterceptors();
+    // Set up axios interceptors only once
+    if (!ApiService.interceptorsSetup) {
+      this.setupInterceptors();
+      ApiService.interceptorsSetup = true;
+    }
   }
 
   private setupInterceptors() {
@@ -142,6 +147,29 @@ class ApiService {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     console.log('Login attempt with URL:', `${this.authUrl}/login`);
 
+    // Create a unique key for this login request
+    const requestKey = `login-${credentials.username}`;
+    
+    // If the same request is already pending, return the existing promise
+    if (this.pendingRequests.has(requestKey)) {
+      console.log('Login request already pending, returning existing promise');
+      return this.pendingRequests.get(requestKey)!;
+    }
+
+    const loginPromise = this.performLogin(credentials);
+    this.pendingRequests.set(requestKey, loginPromise);
+
+    try {
+      const result = await loginPromise;
+      this.pendingRequests.delete(requestKey);
+      return result;
+    } catch (error) {
+      this.pendingRequests.delete(requestKey);
+      throw error;
+    }
+  }
+
+  private async performLogin(credentials: LoginRequest): Promise<LoginResponse> {
     try {
       // Try simple POST request first
       const response: AxiosResponse<LoginResponse> = await axios.post(
