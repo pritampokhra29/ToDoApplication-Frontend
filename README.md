@@ -137,6 +137,31 @@ npm test           # Launches the test runner
 npm run eject      # Ejects from Create React App (one-way operation)
 ```
 
+### Environment Configuration
+
+The application uses different API endpoints for development and production:
+
+#### Environment Files
+- `.env.development` - Development environment (localhost backend)
+- `.env.production` - Production environment (deployed backend)
+- `.env` - Default fallback environment
+
+#### Environment Variables
+```bash
+# Development (.env.development)
+REACT_APP_API_URL=http://localhost:8080
+REACT_APP_ENVIRONMENT=development
+
+# Production (.env.production)
+REACT_APP_API_URL=https://todoapplication-wlvh.onrender.com
+REACT_APP_ENVIRONMENT=production
+```
+
+#### Usage
+- **Development**: `npm start` - Uses `.env.development`
+- **Production Build**: `npm run build` - Uses `.env.production`
+- **Custom Environment**: Set `NODE_ENV=production npm start` to use production API in development
+
 ## Usage
 
 ### Default Login Credentials

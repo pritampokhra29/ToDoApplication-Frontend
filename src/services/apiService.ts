@@ -89,11 +89,16 @@ export interface DashboardStats {
 // ==================== API SERVICE CLASS ====================
 
 class ApiService {
-  private baseUrl = 'http://localhost:8080';
+  private baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8080';
   private tasksUrl = `${this.baseUrl}/tasks`;
   private authUrl = `${this.baseUrl}/auth`;
 
   constructor() {
+    // Log which environment and API URL is being used
+    console.log('🚀 API Service initialized');
+    console.log('📍 Environment:', process.env.REACT_APP_ENVIRONMENT || 'development');
+    console.log('🌐 API URL:', this.baseUrl);
+    
     // Set up axios interceptors for automatic token handling
     this.setupInterceptors();
   }
@@ -318,15 +323,16 @@ class ApiService {
     }
   }
 
-  async getCategories(): Promise<string[]> {
-    try {
-      const url = `${this.tasksUrl}/categories`;
-      const response: AxiosResponse<string[]> = await axios.get(url);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error as AxiosError);
-    }
-  }
+  // TODO: Backend categories endpoint not implemented yet
+  // async getCategories(): Promise<string[]> {
+  //   try {
+  //     const url = `${this.tasksUrl}/categories`;
+  //     const response: AxiosResponse<string[]> = await axios.get(url);
+  //     return response.data;
+  //   } catch (error) {
+  //     throw this.handleError(error as AxiosError);
+  //   }
+  // }
 
   // ==================== USER MANAGEMENT METHODS ====================
 
@@ -556,25 +562,27 @@ class ApiService {
 
   // ==================== DASHBOARD & ANALYTICS METHODS ====================
 
-  async getDashboardStats(): Promise<DashboardStats> {
-    try {
-      const url = `${this.baseUrl}/dashboard/stats`;
-      const response: AxiosResponse<DashboardStats> = await axios.get(url);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error as AxiosError);
-    }
-  }
+  // TODO: Backend dashboard stats endpoint not implemented yet
+  // async getDashboardStats(): Promise<DashboardStats> {
+  //   try {
+  //     const url = `${this.baseUrl}/dashboard/stats`;
+  //     const response: AxiosResponse<DashboardStats> = await axios.get(url);
+  //     return response.data;
+  //   } catch (error) {
+  //     throw this.handleError(error as AxiosError);
+  //   }
+  // }
 
-  async getTaskAnalytics(period: 'week' | 'month' | 'year' = 'month'): Promise<any> {
-    try {
-      const url = `${this.baseUrl}/dashboard/analytics?period=${period}`;
-      const response: AxiosResponse<any> = await axios.get(url);
-      return response.data;
-    } catch (error) {
-      throw this.handleError(error as AxiosError);
-    }
-  }
+  // TODO: Backend analytics endpoint not implemented yet
+  // async getTaskAnalytics(period: 'week' | 'month' | 'year' = 'month'): Promise<any> {
+  //   try {
+  //     const url = `${this.baseUrl}/dashboard/analytics?period=${period}`;
+  //     const response: AxiosResponse<any> = await axios.get(url);
+  //     return response.data;
+  //   } catch (error) {
+  //     throw this.handleError(error as AxiosError);
+  //   }
+  // }
 
   async updateTaskStatus(id: number, status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'): Promise<Task> {
     try {

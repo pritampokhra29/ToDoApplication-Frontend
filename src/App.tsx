@@ -224,12 +224,16 @@ const App = (): React.ReactElement => {
   };
 
   const loadCategories = async () => {
-    try {
-      const categories = await apiService.getCategories();
-      setCategories(Array.from(new Set(categories)));
-    } catch (error: any) {
-      console.error('Error loading categories:', error);
-    }
+    // TODO: Backend categories endpoint not implemented yet
+    // try {
+    //   const categories = await apiService.getCategories();
+    //   setCategories(Array.from(new Set(categories)));
+    // } catch (error: any) {
+    //   console.error('Error loading categories:', error);
+    // }
+    
+    // For now, categories will be populated from tasks as they are created/loaded
+    console.log('Categories will be extracted from existing tasks');
   };
 
   const loadUsers = async () => {
@@ -268,15 +272,20 @@ const App = (): React.ReactElement => {
   const loadDashboardStats = async () => {
     console.log('Loading dashboard stats...');
     
-    try {
-      const stats = await apiService.getDashboardStats();
-      console.log('Dashboard stats loaded from backend:', stats);
-      setDashboardStats(stats);
-    } catch (error: any) {
-      console.error('Error loading dashboard stats from backend:', error);
-      console.log('Calculating dashboard stats from local task data...');
-      calculateDashboardStatsFromTasks();
-    }
+    // TODO: Backend dashboard stats endpoint not implemented yet
+    // try {
+    //   const stats = await apiService.getDashboardStats();
+    //   console.log('Dashboard stats loaded from backend:', stats);
+    //   setDashboardStats(stats);
+    // } catch (error: any) {
+    //   console.error('Error loading dashboard stats from backend:', error);
+    //   console.log('Calculating dashboard stats from local task data...');
+    //   calculateDashboardStatsFromTasks();
+    // }
+
+    // For now, calculate stats from local task data
+    console.log('Calculating dashboard stats from local task data...');
+    calculateDashboardStatsFromTasks();
   };
 
   const calculateDashboardStatsFromTasks = () => {
