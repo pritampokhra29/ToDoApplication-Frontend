@@ -46,7 +46,7 @@ I have successfully implemented comprehensive input validation for the Angular T
 - **Title**: Required, 1-255 characters
 - **Description**: Optional, max 2000 characters
 - **Due Date**: Must be in the future
-- **Status**: Must be "TODO", "IN_PROGRESS", or "COMPLETED"
+- **Status**: Must be "PENDING", "IN_PROGRESS", or "COMPLETED"
 - **Category**: Max 100 characters
 - **Priority**: Must be "LOW", "MEDIUM", or "HIGH"
 

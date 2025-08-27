@@ -32,6 +32,7 @@ export class AppComponent implements OnInit {
   newTask: Partial<Task> = {
     title: '',
     description: '',
+    status: 'PENDING',
     priority: 'MEDIUM',
     category: '',
     tags: [],
@@ -964,6 +965,7 @@ export class AppComponent implements OnInit {
     this.newTask = {
       title: '',
       description: '',
+      status: 'PENDING',
       priority: 'MEDIUM',
       category: '',
       tags: [],

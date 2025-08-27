@@ -23,15 +23,17 @@ export class ValidationService {
     
     if (!username || username.trim() === '') {
       if (isRequired) {
-        errors.push('Username is required');
+        errors.push('Username is required and cannot be empty');
       }
     } else {
       const trimmed = username.trim();
-      if (trimmed.length < 3 || trimmed.length > 50) {
-        errors.push('Username must be between 3 and 50 characters');
+      if (trimmed.length < 3) {
+        errors.push('Username must be at least 3 characters long');
+      } else if (trimmed.length > 50) {
+        errors.push('Username cannot exceed 50 characters');
       }
       if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-        errors.push('Username can only contain letters, numbers, and underscores');
+        errors.push('Username can only contain letters (a-z, A-Z), numbers (0-9), and underscores (_)');
       }
     }
     
@@ -43,16 +45,16 @@ export class ValidationService {
     
     if (!email || email.trim() === '') {
       if (isRequired) {
-        errors.push('Email is required');
+        errors.push('Email address is required and cannot be empty');
       }
     } else {
       const trimmed = email.trim();
       if (trimmed.length > 100) {
-        errors.push('Email must not exceed 100 characters');
+        errors.push('Email address cannot exceed 100 characters');
       }
       // Enhanced email regex for better validation
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-        errors.push('Email should be valid');
+        errors.push('Please enter a valid email address (e.g., user@example.com)');
       }
     }
     
@@ -64,14 +66,16 @@ export class ValidationService {
     
     if (!password || password.trim() === '') {
       if (isRequired) {
-        errors.push('Password is required');
+        errors.push('Password is required and cannot be empty');
       }
     } else {
-      if (password.length < 6 || password.length > 100) {
-        errors.push('Password must be between 6 and 100 characters');
+      if (password.length < 6) {
+        errors.push('Password must be at least 6 characters long');
+      } else if (password.length > 100) {
+        errors.push('Password cannot exceed 100 characters');
       }
       if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/.test(password)) {
-        errors.push('Password must contain at least one lowercase letter, one uppercase letter, and one digit');
+        errors.push('Password must contain at least one lowercase letter, one uppercase letter, and one number');
       }
     }
     
@@ -83,11 +87,11 @@ export class ValidationService {
     
     if (!role || role.trim() === '') {
       if (isRequired) {
-        errors.push('Role is required');
+        errors.push('User role is required and must be selected');
       }
     } else {
       if (!/^(USER|ADMIN)$/.test(role)) {
-        errors.push('Role must be either USER or ADMIN');
+        errors.push('User role must be either "USER" or "ADMIN"');
       }
     }
     
@@ -100,7 +104,7 @@ export class ValidationService {
     const numId = typeof id === 'string' ? parseInt(id, 10) : id;
     
     if (!numId || isNaN(numId) || numId <= 0) {
-      errors.push('User ID must be positive');
+      errors.push('User ID must be a valid positive number greater than 0');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -112,11 +116,13 @@ export class ValidationService {
     const errors: string[] = [];
     
     if (!title || title.trim() === '') {
-      errors.push('Task title is required');
+      errors.push('Task title is required and cannot be empty');
     } else {
       const trimmed = title.trim();
-      if (trimmed.length < 1 || trimmed.length > 255) {
-        errors.push('Title must be between 1 and 255 characters');
+      if (trimmed.length < 1) {
+        errors.push('Task title must contain at least 1 character');
+      } else if (trimmed.length > 255) {
+        errors.push('Task title cannot exceed 255 characters');
       }
     }
     
@@ -127,7 +133,7 @@ export class ValidationService {
     const errors: string[] = [];
     
     if (description && description.length > 2000) {
-      errors.push('Description must not exceed 2000 characters');
+      errors.push('Task description cannot exceed 2000 characters');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -141,8 +147,10 @@ export class ValidationService {
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Reset time to compare dates only
       
-      if (date < today) {
-        errors.push('Due date must be in the future');
+      if (isNaN(date.getTime())) {
+        errors.push('Please provide a valid due date');
+      } else if (date < today) {
+        errors.push('Due date must be today or a future date');
       }
     }
     
@@ -152,8 +160,8 @@ export class ValidationService {
   validateTaskStatus(status: string): ValidationResult {
     const errors: string[] = [];
     
-    if (status && !/^(TODO|IN_PROGRESS|COMPLETED)$/.test(status)) {
-      errors.push('Status must be TODO, IN_PROGRESS, or COMPLETED');
+    if (status && !/^(PENDING|IN_PROGRESS|COMPLETED)$/.test(status)) {
+      errors.push('Task status must be "PENDING", "IN_PROGRESS", or "COMPLETED"');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -163,7 +171,7 @@ export class ValidationService {
     const errors: string[] = [];
     
     if (category && category.length > 100) {
-      errors.push('Category must not exceed 100 characters');
+      errors.push('Task category cannot exceed 100 characters');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -173,7 +181,7 @@ export class ValidationService {
     const errors: string[] = [];
     
     if (priority && !/^(LOW|MEDIUM|HIGH)$/.test(priority)) {
-      errors.push('Priority must be LOW, MEDIUM, or HIGH');
+      errors.push('Task priority must be "LOW", "MEDIUM", or "HIGH"');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -185,7 +193,7 @@ export class ValidationService {
     const numId = typeof id === 'string' ? parseInt(id, 10) : id;
     
     if (!numId || isNaN(numId) || numId <= 0) {
-      errors.push('Task ID must be positive');
+      errors.push('Task ID must be a valid positive number greater than 0');
     }
     
     return { isValid: errors.length === 0, errors };
@@ -204,9 +212,9 @@ export class ValidationService {
     // For login, password just needs to be provided and within length limits
     const errors: string[] = [];
     if (!password || password.trim() === '') {
-      errors.push('Password is required');
+      errors.push('Password is required for login');
     } else if (password.length > 100) {
-      errors.push('Password must not exceed 100 characters');
+      errors.push('Password cannot exceed 100 characters');
     }
     
     if (errors.length > 0) {
@@ -250,11 +258,11 @@ export class ValidationService {
     
     // Optional name validations
     if (userData.firstName && userData.firstName.length > 50) {
-      result['firstName'] = ['First name must not exceed 50 characters'];
+      result['firstName'] = ['First name cannot exceed 50 characters'];
     }
     
     if (userData.lastName && userData.lastName.length > 50) {
-      result['lastName'] = ['Last name must not exceed 50 characters'];
+      result['lastName'] = ['Last name cannot exceed 50 characters'];
     }
     
     return result;
@@ -305,11 +313,11 @@ export class ValidationService {
     }
     
     if (userData.firstName && userData.firstName.length > 50) {
-      result['firstName'] = ['First name must not exceed 50 characters'];
+      result['firstName'] = ['First name cannot exceed 50 characters'];
     }
     
     if (userData.lastName && userData.lastName.length > 50) {
-      result['lastName'] = ['Last name must not exceed 50 characters'];
+      result['lastName'] = ['Last name cannot exceed 50 characters'];
     }
     
     return result;
@@ -398,9 +406,9 @@ export class ValidationService {
         if (context === 'login') {
           const errors: string[] = [];
           if (!value || value.trim() === '') {
-            errors.push('Password is required');
+            errors.push('Password is required for login');
           } else if (value.length > 100) {
-            errors.push('Password must not exceed 100 characters');
+            errors.push('Password cannot exceed 100 characters');
           }
           return errors;
         }
