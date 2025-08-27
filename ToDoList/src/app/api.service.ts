@@ -16,8 +16,15 @@ export interface Task {
   completionDate?: Date | string;
   createdAt?: Date | string;
   updatedAt?: Date | string;
+  createDate?: Date | string;  // Backend uses this field name
+  updateDate?: Date | string;  // Backend uses this field name
+  deleted?: boolean;
   assignedTo?: User;
   collaborators?: User[];
+  collaboratorUserIds?: number[];
+  collaboratorUsernames?: string[];
+  user?: User;      // Legacy field - maps to owner
+  owner?: User;     // New field from TaskResponse
   userId?: number;
 }
 
@@ -99,7 +106,17 @@ export class ApiService {
   private tokenSubject = new BehaviorSubject<string | null>(this.getStoredToken());
   public token$ = this.tokenSubject.asObservable();
 
-  constructor(private http: HttpClient) { }
+  constructor(private http: HttpClient) { 
+    console.log('API Service initialized');
+    console.log('API Base URL:', this.baseUrl);
+    console.log('API Tasks URL:', this.tasksUrl);
+    console.log('API Auth URL:', this.authUrl);
+  }
+
+  // Get base URL for debugging
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
 
   // Get stored token from localStorage
   private getStoredToken(): string | null {
@@ -119,15 +136,16 @@ export class ApiService {
       const token = this.tokenSubject.value || this.getStoredToken();
       if (token) {
         headers = headers.set('Authorization', `Bearer ${token}`);
-        console.log('Adding Bearer token to request:', token.substring(0, 20) + '...'); // Debug log
-        console.log('Full Authorization header:', `Bearer ${token}`); // Debug log
+        console.log('API: Adding Bearer token to request. Token starts with:', token.substring(0, 20) + '...'); 
+        console.log('API: Full Authorization header set');
       } else {
-        console.warn('No JWT token available for request'); // Debug log
-        console.warn('Token from subject:', this.tokenSubject.value);
-        console.warn('Token from localStorage:', this.getStoredToken());
+        console.warn('API: No JWT token available for authenticated request');
+        console.warn('API: Token from subject:', this.tokenSubject.value);
+        console.warn('API: Token from localStorage:', this.getStoredToken());
       }
     }
 
+    console.log('API: Final headers:', headers.keys());
     return { headers };
   }
 
@@ -255,10 +273,21 @@ export class ApiService {
       url += `?keyword=${encodeURIComponent(keyword)}`;
     }
     
+    console.log('API: Making GET request to:', url);
+    console.log('API: Base URL:', this.baseUrl);
+    console.log('API: Full URL:', url);
+    console.log('API: HTTP Options:', this.getHttpOptions());
+    
     return this.http.get<Task[]>(url, this.getHttpOptions())
       .pipe(
         retry(1),
-        catchError(this.handleError)
+        catchError((error) => {
+          console.error('API: GET /tasks failed:', error);
+          console.error('API: Error status:', error.status);
+          console.error('API: Error message:', error.message);
+          console.error('API: Error body:', error.error);
+          return this.handleError(error);
+        })
       );
   }
 
@@ -281,7 +310,22 @@ export class ApiService {
    * Create a new task
    */
   createTask(task: Omit<Task, 'id'>): Observable<Task> {
-    return this.http.post<Task>(this.tasksUrl, task, this.getHttpOptions())
+    console.log('API: Creating task with data:', task);
+    console.log('API: Task collaboratorUserIds:', task.collaboratorUserIds);
+    console.log('API: Task collaboratorUserIds type:', typeof task.collaboratorUserIds);
+    console.log('API: Task collaboratorUserIds length:', task.collaboratorUserIds?.length);
+    console.log('API: Full task object:', JSON.stringify(task, null, 2));
+    
+    // Use the new endpoint if collaborators are provided
+    const hasCollaborators = task.collaboratorUserIds && task.collaboratorUserIds.length > 0;
+    const endpoint = hasCollaborators ? `${this.tasksUrl}/with-collaborators` : this.tasksUrl;
+    
+    // Create a copy of the task to send
+    const taskToSend = { ...task };
+    console.log('API: Using endpoint:', endpoint);
+    console.log('API: Task to send:', JSON.stringify(taskToSend, null, 2));
+    
+    return this.http.post<Task>(endpoint, taskToSend, this.getHttpOptions())
       .pipe(
         retry(1),
         catchError(this.handleError)
@@ -293,9 +337,19 @@ export class ApiService {
    * Note: Uses POST /tasks/update with JSON body as per API spec
    */
   updateTask(task: Task): Observable<Task> {
-    const url = `${this.tasksUrl}/update`;
+    console.log('API: Updating task with data:', task);
+    console.log('API: Task collaboratorUserIds:', task.collaboratorUserIds);
     
-    return this.http.post<Task>(url, task, this.getHttpOptions())
+    // Use the new endpoint if collaborators are provided
+    const hasCollaborators = task.collaboratorUserIds && task.collaboratorUserIds.length > 0;
+    const endpoint = hasCollaborators ? 
+      `${this.tasksUrl}/update-with-collaborators` : 
+      `${this.tasksUrl}/update`;
+    
+    console.log('API: Using update endpoint:', endpoint);
+    console.log('API: Task to update:', JSON.stringify(task, null, 2));
+    
+    return this.http.post<Task>(endpoint, task, this.getHttpOptions())
       .pipe(
         retry(1),
         catchError(this.handleError)

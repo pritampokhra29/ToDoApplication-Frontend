@@ -57,6 +57,7 @@ export class AppComponent implements OnInit {
   availableActiveUsers: User[] = [];
   selectedContributors: User[] = [];
   selectedContributorId: number | string = '';
+  pendingCollaboratorIds: number[] = []; // Store collaborator IDs when editing task
   
   // Admin features
   showUserModal = false;
@@ -91,6 +92,10 @@ export class AppComponent implements OnInit {
 
   ngOnInit() {
     console.log('Component initialized');
+    console.log('API Base URL:', this.apiService.getBaseUrl());
+    
+    // Test API connectivity to debug 500 error
+    this.testApiConnectivity();
     
     // Add a small delay to ensure browser environment is ready
     if (typeof window !== 'undefined') {
@@ -253,7 +258,9 @@ export class AppComponent implements OnInit {
     this.loading = true;
     this.apiService.getTasks().subscribe({
       next: (tasks) => {
-        this.tasks = tasks;
+        // Normalize task data to handle different API response formats
+        this.tasks = tasks.map(task => this.normalizeTaskData(task));
+        console.log('DEBUG - Loaded and normalized tasks:', this.tasks);
         this.applyFilters();
         this.loading = false;
       },
@@ -309,7 +316,16 @@ export class AppComponent implements OnInit {
     this.apiService.getActiveUsers().subscribe({
       next: (users) => {
         console.log('Active users loaded successfully:', users);
+        console.log('Number of active users loaded:', users.length);
         this.availableActiveUsers = users;
+        console.log('availableActiveUsers array after assignment:', this.availableActiveUsers);
+        
+        // Convert pending collaborator IDs to User objects if we have any
+        if (this.pendingCollaboratorIds.length > 0) {
+          this.selectedContributors = this.convertUserIdsToUsers(this.pendingCollaboratorIds);
+          console.log('DEBUG - Converted pending collaborator IDs to users:', this.pendingCollaboratorIds, '->', this.selectedContributors);
+          this.pendingCollaboratorIds = []; // Clear pending IDs
+        }
       },
       error: (error) => {
         console.error('Error loading active users:', error);
@@ -450,21 +466,44 @@ export class AppComponent implements OnInit {
   // ==================== TASK MANAGEMENT ====================
 
   openTaskModal(task?: Task) {
+    console.log('DEBUG - Opening task modal');
+    console.log('DEBUG - Editing task:', task);
+    
     this.clearValidationErrors(); // Clear validation errors when opening modal
     
     if (task) {
       this.editingTask = { ...task };
       this.newTask = { ...task };
-      this.selectedContributors = task.collaborators || [];
+      
+      // Handle collaborators - convert different response formats
+      if (task.collaborators && Array.isArray(task.collaborators)) {
+        // New API format: TaskResponse with full User objects
+        this.selectedContributors = task.collaborators.filter(user => 
+          // Filter out the owner from collaborators list for editing UI
+          task.owner && user.id !== task.owner.id
+        );
+        console.log('DEBUG - Loaded full collaborators from TaskResponse:', this.selectedContributors);
+      } else if (task.collaboratorUserIds && Array.isArray(task.collaboratorUserIds)) {
+        // Legacy format: user IDs only
+        this.pendingCollaboratorIds = task.collaboratorUserIds;
+        this.selectedContributors = [];
+        console.log('DEBUG - Stored pending collaborator IDs:', this.pendingCollaboratorIds);
+      } else {
+        this.selectedContributors = [];
+        console.log('DEBUG - No collaborators found in task');
+      }
     } else {
       this.resetTaskForm();
       this.selectedContributors = [];
+      console.log('DEBUG - Reset contributors for new task');
     }
     
     // Load active users for contributors
+    console.log('DEBUG - Loading active users...');
     this.loadActiveUsers();
     
     this.showTaskModal = true;
+    console.log('DEBUG - Task modal opened, showTaskModal:', this.showTaskModal);
   }
 
   closeTaskModal() {
@@ -472,6 +511,7 @@ export class AppComponent implements OnInit {
     this.editingTask = null;
     this.selectedContributors = [];
     this.selectedContributorId = '';
+    this.pendingCollaboratorIds = []; // Clear pending collaborator IDs
     this.resetTaskForm();
   }
 
@@ -501,21 +541,36 @@ export class AppComponent implements OnInit {
       this.newTask.tags = (this.newTask.tags as string).split(',').map(tag => tag.trim()).filter(tag => tag);
     }
 
+    // Debug logging for collaborators
+    console.log('DEBUG - Selected Contributors before saving:', this.selectedContributors);
+    console.log('DEBUG - Selected Contributors length:', this.selectedContributors.length);
+
+    // Convert collaborators to the format expected by backend (just IDs)
+    const collaboratorIds = this.selectedContributors.map(user => user.id).filter(id => id !== undefined);
+    console.log('DEBUG - Collaborator IDs:', collaboratorIds);
+
     const taskData = {
       ...this.newTask,
       status: this.newTask.status || 'PENDING',
       priority: this.newTask.priority || 'MEDIUM',
-      collaborators: this.selectedContributors
+      collaboratorUserIds: collaboratorIds // Send as collaboratorUserIds instead of collaborators
     };
+
+    console.log('DEBUG - Task data being sent:', taskData);
+    console.log('DEBUG - Task data collaboratorUserIds:', taskData.collaboratorUserIds);
 
     if (this.editingTask) {
       this.apiService.updateTask({ ...taskData, id: this.editingTask.id } as Task).subscribe({
         next: (updatedTask) => {
-          const index = this.tasks.findIndex(t => t.id === updatedTask.id);
+          // Normalize the updated task response
+          const normalizedTask = this.normalizeTaskData(updatedTask);
+          const index = this.tasks.findIndex(t => t.id === normalizedTask.id);
           if (index !== -1) {
-            this.tasks[index] = updatedTask;
+            this.tasks[index] = normalizedTask;
             this.applyFilters();
           }
+          console.log('DEBUG - Updated task response:', updatedTask);
+          console.log('DEBUG - Normalized updated task:', normalizedTask);
           this.closeTaskModal();
           this.showSuccess('Task updated successfully');
           this.loading = false;
@@ -533,7 +588,11 @@ export class AppComponent implements OnInit {
     } else {
       this.apiService.createTask(taskData as Task).subscribe({
         next: (task) => {
-          this.tasks.unshift(task);
+          // Normalize the task response
+          const normalizedTask = this.normalizeTaskData(task);
+          this.tasks.unshift(normalizedTask);
+          console.log('DEBUG - Created task response:', task);
+          console.log('DEBUG - Normalized task:', normalizedTask);
           this.applyFilters();
           this.closeTaskModal();
           this.showSuccess('Task created successfully');
@@ -931,11 +990,17 @@ export class AppComponent implements OnInit {
   // ==================== CONTRIBUTOR MANAGEMENT METHODS ====================
 
   addContributor() {
+    console.log('DEBUG - addContributor called with selectedContributorId:', this.selectedContributorId);
+    
     if (!this.selectedContributorId) return;
     
     const userId = typeof this.selectedContributorId === 'string' ? 
                    parseInt(this.selectedContributorId) : 
                    this.selectedContributorId;
+    
+    console.log('DEBUG - Parsed userId:', userId);
+    console.log('DEBUG - Current user:', this.currentUser);
+    console.log('DEBUG - Available active users:', this.availableActiveUsers);
     
     // Prevent adding current user as collaborator
     if (this.currentUser && userId === this.currentUser.id) {
@@ -945,6 +1010,7 @@ export class AppComponent implements OnInit {
     }
     
     const user = this.availableActiveUsers.find(u => u.id === userId);
+    console.log('DEBUG - Found user:', user);
     
     if (user && !this.isUserAlreadySelected(userId)) {
       this.selectedContributors.push(user);
@@ -955,6 +1021,9 @@ export class AppComponent implements OnInit {
       this.validateFieldOnBlur('collaborators', this.selectedContributors, 'task');
     } else if (this.isUserAlreadySelected(userId)) {
       this.showError('This user is already added as a collaborator');
+    } else if (!user) {
+      console.log('DEBUG - User not found in availableActiveUsers');
+      this.showError('Selected user not found');
     }
     
     this.selectedContributorId = '';
@@ -973,6 +1042,82 @@ export class AppComponent implements OnInit {
 
   isUserAlreadySelected(userId: number): boolean {
     return this.selectedContributors.some(user => user.id === userId);
+  }
+
+  convertUserIdsToUsers(userIds: number[]): User[] {
+    if (!userIds || !Array.isArray(userIds)) {
+      return [];
+    }
+    
+    // Convert user IDs to User objects by finding them in availableActiveUsers
+    const users: User[] = [];
+    for (const id of userIds) {
+      const user = this.availableActiveUsers.find(u => u.id === id);
+      if (user) {
+        users.push(user);
+      } else {
+        console.warn(`User with ID ${id} not found in availableActiveUsers`);
+      }
+    }
+    
+    console.log('DEBUG - convertUserIdsToUsers:', userIds, '->', users);
+    return users;
+  }
+
+  // Helper method to get task owner (handles both user and owner fields)
+  getTaskOwner(task: Task): User | undefined {
+    return task.owner || task.user;
+  }
+
+  // Helper method to normalize task data from different API response formats
+  normalizeTaskData(task: Task): Task {
+    const normalized = { ...task };
+    
+    // Map legacy user field to owner if needed
+    if (task.user && !task.owner) {
+      normalized.owner = task.user;
+    }
+    
+    // Ensure we have proper date field mapping
+    if (task.createDate && !task.createdAt) {
+      normalized.createdAt = task.createDate;
+    }
+    if (task.updateDate && !task.updatedAt) {
+      normalized.updatedAt = task.updateDate;
+    }
+    
+    return normalized;
+  }
+
+  // Debug method to test API connectivity
+  testApiConnectivity() {
+    console.log('=== API CONNECTIVITY TEST ===');
+    console.log('Testing connection to:', this.apiService.getBaseUrl());
+    
+    // Only run in browser environment
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      // Test if backend is running - try to access a simple endpoint
+      fetch(this.apiService.getBaseUrl() + '/tasks', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token') || 'no-token'}`
+        }
+      })
+      .then(response => {
+        console.log('Raw fetch response status:', response.status);
+        console.log('Raw fetch response headers:', Object.fromEntries(response.headers.entries()));
+        return response.text();
+      })
+      .then(text => {
+        console.log('Raw fetch response body:', text);
+      })
+      .catch(error => {
+        console.error('Raw fetch error:', error);
+      });
+    } else {
+      console.log('Skipping connectivity test - not in browser environment');
+    }
   }
 
   // ==================== FORM RESET METHODS ====================
