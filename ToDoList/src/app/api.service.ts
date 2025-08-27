@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Observable, throwError, BehaviorSubject } from 'rxjs';
 import { catchError, retry, tap, switchMap, map } from 'rxjs/operators';
+import { environment } from '../environments/environment';
 
 export interface Task {
   id?: number;
@@ -91,7 +92,7 @@ export interface DashboardStats {
   providedIn: 'root'
 })
 export class ApiService {
-  private baseUrl = 'http://localhost:8080';
+  private baseUrl = environment.apiUrl;
   private tasksUrl = `${this.baseUrl}/tasks`;
   private authUrl = `${this.baseUrl}/auth`;
 
